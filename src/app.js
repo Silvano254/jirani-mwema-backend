@@ -72,7 +72,45 @@ app.get('/health', (req, res) => {
   res.status(200).json(healthStatus);
 });
 
-// Test SMS endpoint
+// Test OTP verification endpoint 
+app.post('/test-otp-verify', async (req, res) => {
+  const { phoneNumber, otp } = req.body;
+  
+  console.log('=== OTP VERIFICATION TEST ===');
+  console.log('Received phoneNumber:', phoneNumber);
+  console.log('Received OTP:', otp);
+  console.log('OTP type:', typeof otp);
+  console.log('OTP length:', otp ? otp.length : 'null');
+  
+  try {
+    // Find user with this phone number
+    const User = require('./models/User');
+    const user = await User.findOne({ phoneNumber });
+    console.log('User found:', user ? 'YES' : 'NO');
+    if (user) {
+      console.log('User phone in DB:', user.phoneNumber);
+      console.log('User OTP in DB:', user.otp);
+      console.log('User OTP expires:', user.otpExpires);
+      console.log('Current time:', new Date());
+      console.log('OTP expired?', user.otpExpires < new Date());
+      console.log('OTP matches?', user.otp === otp);
+    }
+    
+    res.json({
+      success: true,
+      receivedPhone: phoneNumber,
+      receivedOtp: otp,
+      userFound: !!user,
+      userPhone: user?.phoneNumber,
+      userOtp: user?.otp,
+      otpExpired: user ? user.otpExpires < new Date() : null,
+      otpMatches: user ? user.otp === otp : null
+    });
+  } catch (error) {
+    console.error('Test error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
 app.post('/test-sms', async (req, res) => {
   const { phoneNumber, message } = req.body;
   
