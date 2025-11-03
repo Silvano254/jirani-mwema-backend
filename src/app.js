@@ -81,6 +81,23 @@ app.get('/', (req, res) => {
   });
 });
 
+// IP check endpoint for Railway
+app.get('/ip', async (req, res) => {
+  try {
+    const response = await fetch('https://httpbin.org/ip');
+    const data = await response.json();
+    res.status(200).json({
+      railwayIP: data.origin,
+      headers: {
+        'x-forwarded-for': req.headers['x-forwarded-for'],
+        'x-real-ip': req.headers['x-real-ip']
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to get IP' });
+  }
+});
+
 // API routes
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
