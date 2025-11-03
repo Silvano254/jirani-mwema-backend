@@ -18,8 +18,19 @@ const meetingRoutes = require('./routes/meetingRoutes');
 
 const app = express();
 
-// Connect to database
-connectDB();
+// Global database connection status
+let dbConnected = false;
+
+// Connect to database asynchronously (don't block server startup)
+connectDB()
+  .then(() => {
+    dbConnected = true;
+    console.log('Database connection established');
+  })
+  .catch((error) => {
+    console.error('Database connection failed:', error);
+    dbConnected = false;
+  });
 
 // Security middleware
 app.use(helmet());
@@ -42,13 +53,26 @@ app.use(morgan('combined'));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// Health check endpoint
+// Health check endpoint - responds even if DB is not connected
 app.get('/health', (req, res) => {
-  res.status(200).json({
+  const healthStatus = {
     status: 'OK',
     message: 'Jirani Mwema Backend is running',
     timestamp: new Date().toISOString(),
-    version: '1.0.0'
+    version: '1.0.0',
+    database: dbConnected ? 'connected' : 'disconnected',
+    uptime: process.uptime()
+  };
+  
+  res.status(200).json(healthStatus);
+});
+
+// Simple root endpoint
+app.get('/', (req, res) => {
+  res.status(200).json({
+    message: 'Jirani Mwema Backend API',
+    version: '1.0.0',
+    status: 'running'
   });
 });
 
