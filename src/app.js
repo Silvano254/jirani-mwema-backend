@@ -89,11 +89,13 @@ app.post('/test-otp-verify', async (req, res) => {
     console.log('User found:', user ? 'YES' : 'NO');
     if (user) {
       console.log('User phone in DB:', user.phoneNumber);
-      console.log('User OTP in DB:', user.otp);
+      console.log('User OTP (otp field):', user.otp);
+      console.log('User OTP (otpCode field):', user.otpCode);
       console.log('User OTP expires:', user.otpExpires);
       console.log('Current time:', new Date());
       console.log('OTP expired?', user.otpExpires < new Date());
-      console.log('OTP matches?', user.otp === otp);
+      console.log('OTP matches otp field?', user.otp === otp);
+      console.log('OTP matches otpCode field?', user.otpCode === otp);
     }
     
     res.json({
@@ -103,9 +105,11 @@ app.post('/test-otp-verify', async (req, res) => {
       userFound: !!user,
       userPhone: user?.phoneNumber,
       userOtp: user?.otp,
+      userOtpCode: user?.otpCode,
       dbOtp: user?.otp,
       otpExpired: user ? user.otpExpires < new Date() : null,
-      otpMatches: user ? user.otp === otp : null
+      otpMatches: user ? user.otp === otp : null,
+      otpCodeMatches: user ? user.otpCode === otp : null
     });
   } catch (error) {
     console.error('Test error:', error);
