@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jirani Mwema API</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .container {
+            text-align: center;
+            background: rgba(255, 255, 255, 0.1);
+            padding: 40px;
+            border-radius: 20px;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 8px 32px rgba(31, 38, 135, 0.37);
+        }
+        h1 {
+            font-size: 3em;
+            margin-bottom: 20px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+        .api-info {
+            background: rgba(255, 255, 255, 0.2);
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+        }
+        .endpoint {
+            background: rgba(0, 0, 0, 0.2);
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+            font-family: 'Courier New', monospace;
+        }
+        .status {
+            color: #4CAF50;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🏠 Jirani Mwema API</h1>
+        <p class="status">✅ Backend Service Running</p>
+        
+        <div class="api-info">
+            <h3>📡 API Endpoints</h3>
+            <div class="endpoint">GET /api/health - Health Check</div>
+            <div class="endpoint">POST /api/auth/login - User Login</div>
+            <div class="endpoint">POST /api/auth/verify-otp - Verify OTP</div>
+            <div class="endpoint">GET /api/dashboard/stats - Dashboard Statistics</div>
+            <div class="endpoint">GET /api/members - Members Management</div>
+            <div class="endpoint">GET /api/contributions - Contributions</div>
+            <div class="endpoint">GET /api/loans - Loan Management</div>
+            <div class="endpoint">GET /api/meetings - Meetings</div>
+            <div class="endpoint">GET /api/notifications - Notifications</div>
+        </div>
+        
+        <div class="api-info">
+            <h3>📱 Mobile App</h3>
+            <p>Download the Jirani Mwema mobile app to access chama management features</p>
+        </div>
+        
+        <div class="api-info">
+            <h3>🔧 Version</h3>
+            <p>API Version: 1.0.0</p>
+            <p>Environment: Production</p>
+            <p>Hosted on: Firebase Functions</p>
+        </div>
+    </div>
+</body>
+</html>
