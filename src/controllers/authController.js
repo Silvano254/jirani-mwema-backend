@@ -223,14 +223,6 @@ const biometricLogin = async (req, res) => {
       });
     }
 
-    // Check if biometric is enabled
-    if (!user.fingerprintEnabled) {
-      return res.status(403).json({
-        success: false,
-        message: 'Biometric login is not enabled for this account'
-      });
-    }
-
     // Check if account is active and not locked
     if (!user.isActive || user.isLocked) {
       return res.status(403).json({

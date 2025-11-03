@@ -37,7 +37,7 @@ const userSchema = new mongoose.Schema({
   },
   fingerprintEnabled: {
     type: Boolean,
-    default: false
+    default: true
   },
   isProxyManaged: {
     type: Boolean,
