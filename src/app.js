@@ -72,6 +72,35 @@ app.get('/health', (req, res) => {
   res.status(200).json(healthStatus);
 });
 
+// Test SMS endpoint
+app.post('/test-sms', async (req, res) => {
+  const { phoneNumber, message } = req.body;
+  
+  if (!phoneNumber || !message) {
+    return res.status(400).json({
+      success: false,
+      error: 'Phone number and message are required'
+    });
+  }
+
+  try {
+    const smsService = require('./services/smsService');
+    const result = await smsService.sendSMS(phoneNumber, message);
+    
+    res.json({
+      success: true,
+      smsSent: result,
+      phoneNumber: phoneNumber,
+      message: message
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
 // Simple root endpoint
 app.get('/', (req, res) => {
   res.status(200).json({
