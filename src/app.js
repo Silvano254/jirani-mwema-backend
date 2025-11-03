@@ -85,18 +85,35 @@ app.post('/test-sms', async (req, res) => {
 
   try {
     const smsService = require('./services/smsService');
+    
+    // Get service status first
+    const serviceStatus = smsService.getServiceStatus();
+    
+    // Format phone number
+    const formattedNumber = smsService.formatPhoneNumber(phoneNumber);
+    
     const result = await smsService.sendSMS(phoneNumber, message);
     
     res.json({
       success: true,
       smsSent: result,
       phoneNumber: phoneNumber,
-      message: message
+      formattedNumber: formattedNumber,
+      message: message,
+      serviceStatus: serviceStatus,
+      environment: {
+        atApiKey: process.env.AT_API_KEY ? process.env.AT_API_KEY.substring(0, 10) + '...' : 'missing',
+        atUsername: process.env.AT_USERNAME || 'missing',
+        atSenderId: process.env.AT_SENDER_ID || 'missing',
+        enableRealSms: process.env.ENABLE_REAL_SMS,
+        nodeEnv: process.env.NODE_ENV
+      }
     });
   } catch (error) {
     res.status(500).json({
       success: false,
-      error: error.message
+      error: error.message,
+      stack: error.stack
     });
   }
 });

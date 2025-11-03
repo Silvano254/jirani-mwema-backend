@@ -79,12 +79,20 @@ const sendOTP = async (req, res) => {
     const smsSent = await smsService.sendSMS(phoneNumber, smsMessage);
     logger.info(`SMS send result for ${phoneNumber}: ${smsSent ? 'SUCCESS' : 'FAILED'}`);
 
+    // Always allow user to proceed, even if SMS fails
     if (!smsSent) {
-      logger.error(`Failed to send OTP SMS to ${phoneNumber}`);
+      logger.error(`Failed to send OTP SMS to ${phoneNumber}, but allowing user to proceed`);
       
-      return res.status(500).json({
-        success: false,
-        message: 'Failed to send OTP. Please try again.'
+      // Show OTP in response when SMS fails (for debugging/testing)
+      return res.status(200).json({
+        success: true,
+        message: 'OTP generated successfully (SMS delivery failed)',
+        data: {
+          phoneNumber: phoneNumber,
+          expiresIn: 10, // minutes
+          testOtp: otp, // Show OTP when SMS fails
+          note: 'SMS delivery failed - use this OTP to login'
+        }
       });
     }
 
