@@ -18,6 +18,9 @@ const meetingRoutes = require('./routes/meetingRoutes');
 
 const app = express();
 
+// Trust proxy for Railway deployment
+app.set('trust proxy', true);
+
 // Global database connection status
 let dbConnected = false;
 
@@ -33,6 +36,7 @@ connectDB()
   });
 
 // Security middleware
+app.set('trust proxy', 1); // Trust first proxy (Railway)
 app.use(helmet());
 app.use(cors({
   origin: process.env.FRONTEND_URL || '*',
@@ -72,7 +76,25 @@ app.get('/health', (req, res) => {
   res.status(200).json(healthStatus);
 });
 
-// Test OTP verification endpoint 
+// App hit counter for debugging
+let appHitCounter = 0;
+
+// Debug endpoint to track app connections
+app.post('/app-debug', (req, res) => {
+  appHitCounter++;
+  const { action, data } = req.body;
+  
+  console.log(`🔥 APP HIT #${appHitCounter}: ${action}`);
+  console.log(`📱 Data:`, data);
+  console.log(`🕒 Time: ${new Date().toISOString()}`);
+  
+  res.json({
+    success: true,
+    message: `App connected! Hit #${appHitCounter}`,
+    action: action,
+    timestamp: new Date().toISOString()
+  });
+}); 
 app.post('/test-otp-verify', async (req, res) => {
   const { phoneNumber, otp } = req.body;
   
