@@ -119,6 +119,62 @@ app.get('/sms-status', (req, res) => {
   });
 });
 
+// Quick user registration endpoint for testing
+app.post('/quick-register', async (req, res) => {
+  try {
+    const { phoneNumber, firstName, lastName, role } = req.body;
+    
+    if (!phoneNumber) {
+      return res.status(400).json({
+        success: false,
+        message: 'Phone number is required'
+      });
+    }
+
+    const User = require('./models/User');
+    
+    // Check if user already exists
+    const existingUser = await User.findOne({ phoneNumber });
+    if (existingUser) {
+      return res.json({
+        success: true,
+        message: 'User already exists',
+        user: { phoneNumber: existingUser.phoneNumber, role: existingUser.role }
+      });
+    }
+
+    // Create new user
+    const newUser = new User({
+      phoneNumber,
+      firstName: firstName || 'Test',
+      lastName: lastName || 'User',
+      role: role || 'member',
+      isActive: true,
+      isLocked: false,
+    });
+
+    await newUser.save();
+
+    res.json({
+      success: true,
+      message: 'User registered successfully',
+      user: { 
+        phoneNumber: newUser.phoneNumber, 
+        name: `${newUser.firstName} ${newUser.lastName}`,
+        role: newUser.role 
+      }
+    });
+
+  } catch (error) {
+    console.error('Registration error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Registration failed',
+      error: error.message
+    });
+  }
+});
+
 app.post('/test-otp-verify', async (req, res) => {
   const { phoneNumber, otp } = req.body;
   
