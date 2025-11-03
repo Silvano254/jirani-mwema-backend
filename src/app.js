@@ -95,6 +95,30 @@ app.post('/app-debug', (req, res) => {
     timestamp: new Date().toISOString()
   });
 }); 
+
+// SMS diagnostic endpoint
+app.get('/sms-status', (req, res) => {
+  const smsService = require('./services/smsService');
+  
+  res.json({
+    status: 'SMS Service Diagnostics',
+    environment: {
+      AT_API_KEY: process.env.AT_API_KEY ? `${process.env.AT_API_KEY.substring(0, 10)}...` : 'missing',
+      AT_USERNAME: process.env.AT_USERNAME || 'missing',
+      AT_SENDER_ID: process.env.AT_SENDER_ID || 'missing',
+      ENABLE_REAL_SMS: process.env.ENABLE_REAL_SMS || 'missing',
+    },
+    serviceStatus: smsService.getServiceStatus ? smsService.getServiceStatus() : 'method not available',
+    recommendations: [
+      '1. Verify AT_API_KEY is valid and not expired',
+      '2. Check AT_USERNAME matches your Africa\'s Talking account',  
+      '3. Ensure account has sufficient SMS credits',
+      '4. Verify sender ID is approved (or remove it)',
+      '5. Check if account is in sandbox mode',
+    ]
+  });
+});
+
 app.post('/test-otp-verify', async (req, res) => {
   const { phoneNumber, otp } = req.body;
   
