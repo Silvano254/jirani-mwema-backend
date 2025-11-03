@@ -15,6 +15,7 @@ const transactionRoutes = require('./routes/transactionRoutes');
 const proxyRoutes = require('./routes/proxyRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
 const meetingRoutes = require('./routes/meetingRoutes');
+const adminRoutes = require('./routes/adminRoutes');
 
 const app = express();
 
@@ -296,6 +297,7 @@ app.use('/api/transactions', transactionRoutes);
 app.use('/api/proxy', proxyRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/meetings', meetingRoutes);
+app.use('/api/admin', adminRoutes);
 
 // 404 handler
 app.use('*', (req, res) => {

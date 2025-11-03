@@ -23,8 +23,13 @@ const userSchema = new mongoose.Schema({
   },
   role: {
     type: String,
-    enum: ['chairperson', 'secretary', 'treasurer', 'member'],
+    enum: ['admin', 'chairperson', 'secretary', 'treasurer', 'member'],
     default: 'member'
+  },
+  nationalId: {
+    type: String,
+    trim: true,
+    sparse: true // Allow null values but enforce uniqueness when present
   },
   isActive: {
     type: Boolean,

@@ -534,6 +534,107 @@ const deleteUser = async (req, res) => {
   }
 };
 
+/**
+ * @desc    Register a new member
+ * @route   POST /api/users/register
+ * @access  Private (Chairperson/Secretary)
+ */
+const registerMember = async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Validation failed',
+        errors: errors.array()
+      });
+    }
+
+    const {
+      firstName,
+      lastName,
+      phoneNumber,
+      nationalId,
+      email,
+      dateOfBirth,
+      gender,
+      address,
+      emergencyContact,
+      emergencyPhone,
+      role = 'member'
+    } = req.body;
+
+    // Check if user already exists
+    const existingUser = await User.findOne({
+      $or: [
+        { phoneNumber },
+        { nationalId },
+        { email: email || null }
+      ].filter(Boolean)
+    });
+
+    if (existingUser) {
+      return res.status(409).json({
+        success: false,
+        message: 'User already exists with this phone number, national ID, or email'
+      });
+    }
+
+    // Create new user
+    const newUser = new User({
+      firstName,
+      lastName,
+      phoneNumber,
+      nationalId,
+      email,
+      dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : undefined,
+      gender,
+      address,
+      emergencyContact,
+      emergencyPhone,
+      role,
+      isActive: true,
+      isLocked: false,
+      registeredBy: req.user.id,
+      registrationDate: new Date()
+    });
+
+    await newUser.save();
+
+    // Send welcome SMS
+    try {
+      const smsService = require('../services/smsService');
+      await smsService.sendWelcomeSMS(phoneNumber, `${firstName} ${lastName}`);
+    } catch (smsError) {
+      logger.error('Failed to send welcome SMS:', smsError);
+      // Don't fail registration if SMS fails
+    }
+
+    logger.info(`New member registered: ${firstName} ${lastName} (${phoneNumber}) by user ${req.user.id}`);
+
+    res.status(201).json({
+      success: true,
+      message: 'Member registered successfully',
+      data: {
+        id: newUser._id,
+        firstName: newUser.firstName,
+        lastName: newUser.lastName,
+        phoneNumber: newUser.phoneNumber,
+        role: newUser.role,
+        isActive: newUser.isActive
+      }
+    });
+
+  } catch (error) {
+    logger.error('Member registration error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to register member',
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+    });
+  }
+};
+
 module.exports = {
   getAllUsers,
   getUserById,
@@ -544,5 +645,6 @@ module.exports = {
   updateUserRole,
   toggleUserStatus,
   getUserStats,
-  bulkUpdateUsers
+  bulkUpdateUsers,
+  registerMember
 };

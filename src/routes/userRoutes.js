@@ -10,7 +10,8 @@ const {
   updateUserRole,
   toggleUserStatus,
   getUserStats,
-  bulkUpdateUsers
+  bulkUpdateUsers,
+  registerMember
 } = require('../controllers/userController');
 const { protect, authorize } = require('../middleware/authMiddleware');
 const { validate } = require('../middleware/validationMiddleware');
@@ -85,6 +86,58 @@ const statusValidation = [
     .isBoolean()
     .withMessage('Status must be a boolean value')
 ];
+
+const memberRegistrationValidation = [
+  body('firstName')
+    .notEmpty()
+    .trim()
+    .isLength({ min: 2, max: 50 })
+    .withMessage('First name is required and must be between 2 and 50 characters'),
+  body('lastName')
+    .notEmpty()
+    .trim()
+    .isLength({ min: 2, max: 50 })
+    .withMessage('Last name is required and must be between 2 and 50 characters'),
+  body('phoneNumber')
+    .notEmpty()
+    .matches(/^\+?254[7][0-9]{8}$|^0[7][0-9]{8}$/)
+    .withMessage('Valid Kenyan phone number is required'),
+  body('nationalId')
+    .notEmpty()
+    .trim()
+    .isLength({ min: 7, max: 8 })
+    .isNumeric()
+    .withMessage('Valid national ID is required (7-8 digits)'),
+  body('email')
+    .optional()
+    .trim()
+    .isEmail()
+    .withMessage('Valid email address is required'),
+  body('dateOfBirth')
+    .optional()
+    .isISO8601()
+    .withMessage('Valid date of birth is required'),
+  body('gender')
+    .optional()
+    .isIn(['male', 'female', 'other'])
+    .withMessage('Gender must be male, female, or other'),
+  body('role')
+    .optional()
+    .isIn(['member', 'secretary', 'treasurer'])
+    .withMessage('Role must be member, secretary, or treasurer')
+];
+
+/**
+ * @route   POST /api/users/register
+ * @desc    Register a new member
+ * @access  Private (Chairperson/Secretary)
+ */
+router.post('/register',
+  authorize('chairperson', 'secretary'),
+  memberRegistrationValidation,
+  validate,
+  registerMember
+);
 
 /**
  * @route   GET /api/users
