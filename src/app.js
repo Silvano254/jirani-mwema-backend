@@ -103,6 +103,7 @@ app.post('/test-otp-verify', async (req, res) => {
       userFound: !!user,
       userPhone: user?.phoneNumber,
       userOtp: user?.otp,
+      dbOtp: user?.otp,
       otpExpired: user ? user.otpExpires < new Date() : null,
       otpMatches: user ? user.otp === otp : null
     });
