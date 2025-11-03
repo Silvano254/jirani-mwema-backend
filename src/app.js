@@ -61,7 +61,12 @@ app.get('/health', (req, res) => {
     timestamp: new Date().toISOString(),
     version: '1.0.0',
     database: dbConnected ? 'connected' : 'disconnected',
-    uptime: process.uptime()
+    uptime: process.uptime(),
+    environment: {
+      mongoUri: process.env.MONGODB_URI ? 'configured' : 'missing',
+      atApiKey: process.env.AT_API_KEY ? 'configured' : 'missing',
+      atUsername: process.env.AT_USERNAME ? 'configured' : 'missing'
+    }
   };
   
   res.status(200).json(healthStatus);
