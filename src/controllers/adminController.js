@@ -1,6 +1,73 @@
 const User = require('../models/User');
 const logger = require('../utils/logger');
 
+// Promote existing user to admin (for initial setup)
+const promoteToAdmin = async (req, res) => {
+  try {
+    const { phoneNumber, nationalId } = req.body;
+
+    // Validate required fields
+    if (!phoneNumber || !nationalId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Phone number and national ID are required'
+      });
+    }
+
+    // Check if admin already exists
+    const existingAdmin = await User.findOne({ role: 'admin' });
+    if (existingAdmin) {
+      return res.status(400).json({
+        success: false,
+        message: 'Admin user already exists'
+      });
+    }
+
+    // Find user by phone number
+    const user = await User.findOne({ phoneNumber });
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User with this phone number not found'
+      });
+    }
+
+    // Update user to admin role
+    user.role = 'admin';
+    user.nationalId = nationalId;
+    user.firstName = 'Silvano';
+    user.lastName = 'Otieno';
+    await user.save();
+
+    logger.info('User promoted to admin', {
+      userId: user._id,
+      phoneNumber: user.phoneNumber,
+      promotedBy: 'system'
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'User successfully promoted to admin',
+      data: {
+        userId: user._id,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        phoneNumber: user.phoneNumber,
+        role: user.role,
+        nationalId: user.nationalId
+      }
+    });
+
+  } catch (error) {
+    logger.error('Error promoting user to admin:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+};
+
 // Create admin user
 const createAdmin = async (req, res) => {
   try {
@@ -278,6 +345,7 @@ const deleteUser = async (req, res) => {
 };
 
 module.exports = {
+  promoteToAdmin,
   createAdmin,
   getAdminDashboard,
   getAllUsers,

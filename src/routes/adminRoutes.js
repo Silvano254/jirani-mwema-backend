@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const {
+  promoteToAdmin,
   createAdmin,
   getAdminDashboard,
   getAllUsers,
@@ -8,6 +9,13 @@ const {
   deleteUser
 } = require('../controllers/adminController');
 const { protect, authorize } = require('../middleware/authMiddleware');
+
+/**
+ * @route   POST /api/admin/promote-to-admin
+ * @desc    Promote existing user to admin (for initial setup)
+ * @access  Public (only works if no admin exists)
+ */
+router.post('/promote-to-admin', promoteToAdmin);
 
 /**
  * @route   POST /api/admin/create-admin
