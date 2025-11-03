@@ -33,19 +33,21 @@ class SMSService {
         return false;
       }
 
+      // Try without sender ID first to avoid 401 errors
       let options = {
         to: [formattedNumber],
         message: message,
-        from: process.env.AT_SENDER_ID || 'AFRICASTKNG' // Use approved sender ID
+        // Temporarily comment out sender ID to test
+        // from: process.env.AT_SENDER_ID || 'AFRICASTKNG'
       };
 
+      logger.info(`Attempting SMS to ${formattedNumber} without sender ID first...`);
       let response = await this.sms.send(options);
       
-      // If we get InvalidSenderId error, try again without sender ID
+      // If successful without sender ID, great!
+      // If we get InvalidSenderId error, we already don't have one
       if (response.SMSMessageData.Message === 'InvalidSenderId') {
-        logger.warn('Invalid sender ID, retrying without sender ID...');
-        delete options.from;
-        response = await this.sms.send(options);
+        logger.warn('Invalid sender ID error even without sender ID');
       }
       
       if (response.SMSMessageData.Recipients.length > 0) {
