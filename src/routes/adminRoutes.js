@@ -6,7 +6,8 @@ const {
   getAdminDashboard,
   getAllUsers,
   updateUser,
-  deleteUser
+  deleteUser,
+  createUser
 } = require('../controllers/adminController');
 const { protect, authorize } = require('../middleware/authMiddleware');
 
@@ -37,6 +38,13 @@ router.get('/dashboard', protect, authorize('admin'), getAdminDashboard);
  * @access  Private (Admin only)
  */
 router.get('/users', protect, authorize('admin'), getAllUsers);
+
+/**
+ * @route   POST /api/admin/users
+ * @desc    Create new user
+ * @access  Private (Admin only)
+ */
+router.post('/users', protect, authorize('admin'), createUser);
 
 /**
  * @route   PUT /api/admin/users/:userId

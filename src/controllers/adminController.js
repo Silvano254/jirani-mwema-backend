@@ -344,11 +344,95 @@ const deleteUser = async (req, res) => {
   }
 };
 
+// Create new user (admin only)
+const createUser = async (req, res) => {
+  try {
+    const { firstName, lastName, phoneNumber, nationalId, role } = req.body;
+
+    // Validate required fields
+    if (!firstName || !lastName || !phoneNumber || !nationalId || !role) {
+      return res.status(400).json({
+        success: false,
+        message: 'All fields (firstName, lastName, phoneNumber, nationalId, role) are required'
+      });
+    }
+
+    // Validate role
+    const validRoles = ['member', 'secretary', 'treasurer', 'chairperson'];
+    if (!validRoles.includes(role)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid role. Must be one of: member, secretary, treasurer, chairperson'
+      });
+    }
+
+    // Check if phone number already exists
+    const existingPhone = await User.findOne({ phoneNumber });
+    if (existingPhone) {
+      return res.status(400).json({
+        success: false,
+        message: 'Phone number already registered'
+      });
+    }
+
+    // Check if national ID already exists
+    const existingId = await User.findOne({ nationalId });
+    if (existingId) {
+      return res.status(400).json({
+        success: false,
+        message: 'National ID already registered'
+      });
+    }
+
+    // Create new user
+    const newUser = new User({
+      firstName,
+      lastName,
+      phoneNumber,
+      nationalId,
+      role,
+      isActive: true,
+      fingerprintEnabled: false
+    });
+
+    await newUser.save();
+
+    logger.info(`New user created by admin: ${newUser.firstName} ${newUser.lastName} - ${newUser.phoneNumber}`);
+
+    // Return user data without sensitive fields
+    const userData = {
+      _id: newUser._id,
+      firstName: newUser.firstName,
+      lastName: newUser.lastName,
+      phoneNumber: newUser.phoneNumber,
+      nationalId: newUser.nationalId,
+      role: newUser.role,
+      isActive: newUser.isActive,
+      fingerprintEnabled: newUser.fingerprintEnabled,
+      createdAt: newUser.createdAt
+    };
+
+    res.status(201).json({
+      success: true,
+      message: 'User created successfully',
+      data: userData
+    });
+
+  } catch (error) {
+    logger.error('Error creating user:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while creating user'
+    });
+  }
+};
+
 module.exports = {
   promoteToAdmin,
   createAdmin,
   getAdminDashboard,
   getAllUsers,
   updateUser,
-  deleteUser
+  deleteUser,
+  createUser
 };
