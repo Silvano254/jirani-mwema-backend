@@ -1,4 +1,5 @@
 const User = require('../models/User');
+const AuditLog = require('../models/AuditLog');
 const logger = require('../utils/logger');
 const fs = require('fs').promises;
 const path = require('path');
@@ -455,6 +456,21 @@ const createUser = async (req, res) => {
     await newUser.save();
 
     logger.info(`New user created by admin: ${newUser.firstName} ${newUser.lastName} - ${newUser.phoneNumber}`);
+
+    // Log user creation action
+    await AuditLog.logAction({
+      action: 'USER_CREATED',
+      userId: req.user.id, // Admin who created the user
+      targetUserId: newUser._id, // User that was created
+      details: `Created new user: ${newUser.firstName} ${newUser.lastName} (${newUser.phoneNumber}) with role: ${newUser.role}`,
+      ipAddress: req.ip || req.connection.remoteAddress,
+      userAgent: req.get('User-Agent'),
+      result: 'SUCCESS',
+      metadata: {
+        createdUserRole: newUser.role,
+        createdUserPhone: newUser.phoneNumber
+      }
+    });
 
     // Send registration SMS
     try {
@@ -980,71 +996,26 @@ const sendSystemNotification = async (req, res) => {
 // Audit Log Management
 const getAuditLogs = async (req, res) => {
   try {
-    const { page = 1, limit = 50, action, userId, startDate, endDate } = req.query;
+    const { page = 1, limit = 50, action, userId, targetUserId, result, startDate, endDate } = req.query;
 
-    // Build query filters
-    const filters = {};
-    if (action) filters.action = action;
-    if (userId) filters.userId = userId;
-    if (startDate || endDate) {
-      filters.timestamp = {};
-      if (startDate) filters.timestamp.$gte = new Date(startDate);
-      if (endDate) filters.timestamp.$lte = new Date(endDate);
-    }
-
-    // In a real implementation, this would query an audit log collection
-    // For now, we'll return mock data
-    const mockAuditLogs = [
-      {
-        id: '1',
-        action: 'USER_LOGIN',
-        userId: '60f7b1234567890123456789',
-        userName: 'John Doe',
-        details: 'User logged in successfully',
-        ipAddress: '192.168.1.100',
-        userAgent: 'Mozilla/5.0...',
-        timestamp: new Date().toISOString(),
-        result: 'SUCCESS'
-      },
-      {
-        id: '2',
-        action: 'USER_CREATED',
-        userId: '60f7b1234567890123456788',
-        userName: 'Admin User',
-        details: 'Created new user: Jane Smith',
-        ipAddress: '192.168.1.101',
-        userAgent: 'Mozilla/5.0...',
-        timestamp: new Date(Date.now() - 3600000).toISOString(),
-        result: 'SUCCESS'
-      },
-      {
-        id: '3',
-        action: 'BIOMETRIC_ENABLED',
-        userId: '60f7b1234567890123456787',
-        userName: 'Alice Johnson',
-        details: 'Enabled biometric authentication',
-        ipAddress: '192.168.1.102',
-        userAgent: 'Mozilla/5.0...',
-        timestamp: new Date(Date.now() - 7200000).toISOString(),
-        result: 'SUCCESS'
-      }
-    ];
-
-    const skip = (parseInt(page) - 1) * parseInt(limit);
-    const logs = mockAuditLogs.slice(skip, skip + parseInt(limit));
+    // Use the real AuditLog model to get logs
+    const auditData = await AuditLog.getLogs({}, {
+      page,
+      limit,
+      action,
+      userId,
+      targetUserId,
+      result,
+      startDate,
+      endDate
+    });
 
     res.json({
       success: true,
       message: 'Audit logs retrieved successfully',
       data: {
-        logs,
-        pagination: {
-          currentPage: parseInt(page),
-          totalPages: Math.ceil(mockAuditLogs.length / parseInt(limit)),
-          totalLogs: mockAuditLogs.length,
-          hasNext: skip + parseInt(limit) < mockAuditLogs.length,
-          hasPrev: parseInt(page) > 1
-        }
+        logs: auditData.logs,
+        pagination: auditData.pagination
       }
     });
 

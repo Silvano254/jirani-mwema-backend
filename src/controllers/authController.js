@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const AuditLog = require('../models/AuditLog');
 const otpService = require('../services/otpService');
 const smsService = require('../services/smsService');
 const logger = require('../utils/logger');
@@ -186,6 +187,16 @@ const verifyOTP = async (req, res) => {
       const errorMsg = !user.otpCode ? 'No OTP found. Please request a new OTP.' 
                       : user.otpExpires <= Date.now() ? 'OTP has expired. Please request a new OTP.'
                       : 'Invalid OTP. Please check and try again.';
+
+      // Log failed login attempt
+      await AuditLog.logAction({
+        action: 'USER_LOGIN',
+        userId: user._id,
+        details: `Failed login attempt: ${errorMsg}`,
+        ipAddress: req.ip || req.connection.remoteAddress,
+        userAgent: req.get('User-Agent'),
+        result: 'FAILURE'
+      });
       
       return res.status(400).json({
         success: false,
@@ -208,6 +219,16 @@ const verifyOTP = async (req, res) => {
     const token = generateToken(user._id);
 
     logger.info(`User ${user.id} logged in successfully`);
+
+    // Log successful login to audit trail
+    await AuditLog.logAction({
+      action: 'USER_LOGIN',
+      userId: user._id,
+      details: `User logged in successfully via OTP verification`,
+      ipAddress: req.ip || req.connection.remoteAddress,
+      userAgent: req.get('User-Agent'),
+      result: 'SUCCESS'
+    });
 
     res.status(200).json({
       success: true,
@@ -332,6 +353,20 @@ const toggleFingerprint = async (req, res) => {
 
     logger.info(`User ${userId} fingerprint changed from ${oldValue} to ${enabled}`);
 
+    // Log biometric toggle action
+    await AuditLog.logAction({
+      action: enabled ? 'BIOMETRIC_ENABLED' : 'BIOMETRIC_DISABLED',
+      userId: user._id,
+      details: `User ${enabled ? 'enabled' : 'disabled'} biometric authentication`,
+      ipAddress: req.ip || req.connection.remoteAddress,
+      userAgent: req.get('User-Agent'),
+      result: 'SUCCESS',
+      metadata: {
+        previousValue: oldValue,
+        newValue: enabled
+      }
+    });
+
     res.status(200).json({
       success: true,
       message: `Fingerprint login ${enabled ? 'enabled' : 'disabled'}`,
@@ -357,6 +392,16 @@ const logout = async (req, res) => {
     await User.findByIdAndUpdate(userId, { deviceToken: null });
 
     logger.info(`User ${userId} logged out`);
+
+    // Log logout action
+    await AuditLog.logAction({
+      action: 'USER_LOGOUT',
+      userId: userId,
+      details: 'User logged out successfully',
+      ipAddress: req.ip || req.connection.remoteAddress,
+      userAgent: req.get('User-Agent'),
+      result: 'SUCCESS'
+    });
 
     res.status(200).json({
       success: true,
