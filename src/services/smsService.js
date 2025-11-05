@@ -33,19 +33,30 @@ class SMSService {
         return false;
       }
 
-      // Use a simple sender ID or no sender ID to avoid blacklisting
+      // Decide sender ID usage
+      const configuredSender = process.env.AT_SENDER_ID && process.env.AT_SENDER_ID.trim() !== ''
+        ? process.env.AT_SENDER_ID.trim()
+        : null;
+
+      // Build initial send options
       let options = {
         to: [formattedNumber],
         message: message,
-        // Use a short, simple sender ID or leave it out
-        from: 'JIRANI'
+        // Request queuing to improve delivery odds
+        enqueue: true,
+        // Include sender only if configured/approved
+        ...(configuredSender ? { from: configuredSender } : {})
       };
 
-      logger.info(`Sending SMS to ${formattedNumber}...`);
+      logger.info(`Sending SMS to ${formattedNumber}... (username=${process.env.AT_USERNAME || 'N/A'}, from=${configuredSender || 'NONE'})`);
       let response = await this.sms.send(options);
-      
-      if (response.SMSMessageData.Recipients.length > 0) {
-        const recipient = response.SMSMessageData.Recipients[0];
+
+      // Log raw response for diagnostics when unexpected
+      const recipients = response && response.SMSMessageData ? response.SMSMessageData.Recipients || [] : [];
+      const responseMessage = response && response.SMSMessageData ? response.SMSMessageData.Message : undefined;
+
+      if (recipients.length > 0) {
+        const recipient = recipients[0];
         
         if (recipient.status === 'Success') {
           logger.info(`SMS sent successfully to ${formattedNumber}: ${recipient.messageId}`);
@@ -54,17 +65,19 @@ class SMSService {
           logger.error(`SMS failed to ${formattedNumber}: ${recipient.status} - ${recipient.description || 'No description'}`);
           
           // If we get blacklisted error, try without sender ID
-          if (recipient.status.includes('blacklist') || recipient.status.includes('InvalidSenderId')) {
+          if (String(recipient.status).toLowerCase().includes('blacklist') || String(recipient.status).toLowerCase().includes('invalidsenderid')) {
             logger.info('Retrying SMS without sender ID due to blacklist/invalid sender...');
             const optionsNoSender = {
               to: [formattedNumber],
-              message: message
+              message: message,
+              enqueue: true
               // No sender ID
             };
             
             const retryResponse = await this.sms.send(optionsNoSender);
-            if (retryResponse.SMSMessageData.Recipients.length > 0) {
-              const retryRecipient = retryResponse.SMSMessageData.Recipients[0];
+            const retryRecipients = retryResponse && retryResponse.SMSMessageData ? retryResponse.SMSMessageData.Recipients || [] : [];
+            if (retryRecipients.length > 0) {
+              const retryRecipient = retryRecipients[0];
               if (retryRecipient.status === 'Success') {
                 logger.info(`SMS retry successful to ${formattedNumber}: ${retryRecipient.messageId}`);
                 return true;
@@ -76,7 +89,34 @@ class SMSService {
         }
       }
 
-      logger.error('No recipients in SMS response');
+      // No recipients returned. Log diagnostic info and attempt retry without sender if we used one
+      logger.error(`No recipients in SMS response${responseMessage ? ` - provider message: ${responseMessage}` : ''}`);
+      logger.debug('Raw SMS response (truncated): ' + JSON.stringify(response).substring(0, 500));
+
+      if (configuredSender) {
+        logger.info('Retrying SMS without sender ID due to empty recipients...');
+        const optionsNoSender = {
+          to: [formattedNumber],
+          message: message,
+          enqueue: true
+        };
+        try {
+          const retryResponse = await this.sms.send(optionsNoSender);
+          const retryRecipients = retryResponse && retryResponse.SMSMessageData ? retryResponse.SMSMessageData.Recipients || [] : [];
+          if (retryRecipients.length > 0 && retryRecipients[0].status === 'Success') {
+            logger.info(`SMS sent successfully on retry to ${formattedNumber}: ${retryRecipients[0].messageId}`);
+            return true;
+          } else if (retryRecipients.length > 0) {
+            logger.error(`SMS retry failed to ${formattedNumber}: ${retryRecipients[0].status} - ${retryRecipients[0].description || 'No description'}`);
+          } else {
+            const retryMsg = retryResponse && retryResponse.SMSMessageData ? retryResponse.SMSMessageData.Message : undefined;
+            logger.error(`SMS retry returned no recipients${retryMsg ? ` - provider message: ${retryMsg}` : ''}`);
+          }
+        } catch (retryErr) {
+          logger.error('SMS retry error:', retryErr);
+        }
+      }
+
       return false;
 
     } catch (error) {
