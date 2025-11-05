@@ -153,110 +153,69 @@ const createAdmin = async (req, res) => {
   }
 };
 
-// Get admin dashboard stats
+// Get admin dashboard stats (optimized for mobile)
 const getAdminDashboard = async (req, res) => {
   try {
-    // Get user statistics
-    const totalUsers = await User.countDocuments();
-    const activeUsers = await User.countDocuments({ isActive: true });
-    const usersByRole = await User.aggregate([
-      { $group: { _id: '$role', count: { $sum: 1 } } }
+    // Track performance
+    const startTime = Date.now();
+
+    // Use Promise.all for parallel execution - much faster!
+    const [
+      totalUsers,
+      activeUsers,
+      usersByRole,
+      fingerprintUsers,
+      totalBalance,
+      pendingApprovals
+    ] = await Promise.all([
+      User.countDocuments(),
+      User.countDocuments({ isActive: true }),
+      User.aggregate([{ $group: { _id: '$role', count: { $sum: 1 } } }]),
+      User.countDocuments({ fingerprintEnabled: true }),
+      Transaction.aggregate([
+        { $match: { type: 'contribution', status: 'completed' } },
+        { $group: { _id: null, total: { $sum: '$amount' } } }
+      ]).then(result => result[0]?.total || 0),
+      Transaction.countDocuments({ type: 'loan', status: 'pending' })
     ]);
 
-    // Get recent users (last 10)
-    const recentUsers = await User.find()
-      .sort({ createdAt: -1 })
-      .limit(10)
-      .select('firstName lastName phoneNumber role isActive createdAt');
-
-    // Get users with fingerprint enabled
-    const fingerprintUsers = await User.countDocuments({ fingerprintEnabled: true });
-
-    // System Health Metrics
-    const now = new Date();
+    // Quick health check without heavy operations
     const memUsage = process.memoryUsage();
-    
-    // Database connectivity check
-    let dbStatus = 'Healthy';
-    let dbLatency = 0;
-    try {
-      const dbStartTime = Date.now();
-      await User.findOne().limit(1);
-      dbLatency = Date.now() - dbStartTime;
-      if (dbLatency > 1000) dbStatus = 'Slow';
-    } catch (error) {
-      dbStatus = 'Error';
-      dbLatency = -1;
-    }
+    const systemHealth = memUsage.heapUsed / memUsage.heapTotal < 0.8 ? 'Excellent' : 'Good';
 
-    // Server health status
-    const serverStatus = memUsage.heapUsed / memUsage.heapTotal < 0.9 ? 'Online' : 'High Memory';
-    const systemHealth = dbStatus === 'Healthy' && serverStatus === 'Online' ? 'Excellent' : 
-                        dbStatus === 'Slow' || serverStatus === 'High Memory' ? 'Good' : 'Poor';
-
-    // Calculate growth metrics
-    const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    const usersLastMonth = await User.countDocuments({ createdAt: { $gte: lastMonth } });
-    const userGrowthRate = totalUsers > 0 ? ((usersLastMonth / totalUsers) * 100).toFixed(1) : '0.0';
-
-    // Calculate statistics
+    // Lightweight response - only essential data for mobile
     const stats = {
+      // Core metrics
       totalUsers,
       activeUsers,
       inactiveUsers: totalUsers - activeUsers,
       fingerprintEnabledUsers: fingerprintUsers,
+      
+      // Role distribution
       usersByRole: usersByRole.reduce((acc, item) => {
         acc[item._id] = item.count;
         return acc;
       }, {}),
-      recentUsers,
       
-      // Enhanced system health data
+      // Financial overview
+      totalBalance,
+      pendingApprovals,
+      
+      // System health (simplified)
       systemHealth,
-      serverStatus,
-      databaseStatus: dbStatus,
-      databaseLatency: dbLatency,
-      uptime: Math.floor(process.uptime()),
-      memoryUsage: {
-        used: Math.round(memUsage.heapUsed / 1024 / 1024),
-        total: Math.round(memUsage.heapTotal / 1024 / 1024),
-        percentage: Math.round((memUsage.heapUsed / memUsage.heapTotal) * 100)
-      },
+      uptime: Math.floor(process.uptime() / 3600), // hours
+      memoryUsage: Math.round((memUsage.heapUsed / memUsage.heapTotal) * 100),
       
-      // Calculate real financial metrics from database
-      totalBalance: await Transaction.aggregate([
-        { $match: { type: 'contribution', status: 'completed' } },
-        { $group: { _id: null, total: { $sum: '$amount' } } }
-      ]).then(result => result[0]?.total || 0),
-      
-      totalLoans: await Transaction.aggregate([
-        { $match: { type: 'loan', status: 'approved' } },
-        { $group: { _id: null, total: { $sum: '$amount' } } }
-      ]).then(result => result[0]?.total || 0),
-      
-      pendingApprovals: await Transaction.countDocuments({ 
-        type: 'loan', 
-        status: 'pending' 
-      }),
-      
-      // Growth metrics
-      userGrowthRate: `+${userGrowthRate}%`,
-      activeLoans: await Transaction.countDocuments({ 
-        type: 'loan', 
-        status: { $in: ['approved', 'active'] } 
-      }),
-      systemVersion: '1.0.0',
-      lastBackup: new Date(Date.now() - (Math.random() * 86400000)).toISOString(),
-      
-      // New members this month
-      totalMembers: totalUsers,
-      activeMembers: activeUsers,
-      newMembersThisMonth: usersLastMonth
+      // Performance tracking
+      loadTime: Date.now() - startTime,
+      lastUpdated: new Date().toISOString()
     };
+
+    logger.info(`Admin dashboard loaded in ${Date.now() - startTime}ms`, { userId: req.user.id });
 
     res.json({
       success: true,
-      message: 'Admin dashboard data retrieved successfully',
+      message: 'Dashboard data loaded',
       data: stats
     });
 
@@ -269,49 +228,46 @@ const getAdminDashboard = async (req, res) => {
   }
 };
 
-// Get all users with pagination
+// Get all users with pagination (optimized)
 const getAllUsers = async (req, res) => {
   try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 20;
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(50, Math.max(10, parseInt(req.query.limit) || 20)); // Limit max to 50 for mobile
     const search = req.query.search || '';
     const role = req.query.role || '';
     const status = req.query.status || '';
 
-    // Build query
+    // Build query efficiently
     const query = {};
     
     if (search) {
       query.$or = [
         { firstName: { $regex: search, $options: 'i' } },
         { lastName: { $regex: search, $options: 'i' } },
-        { phoneNumber: { $regex: search, $options: 'i' } },
-        { nationalId: { $regex: search, $options: 'i' } }
+        { phoneNumber: { $regex: search, $options: 'i' } }
       ];
     }
 
-    if (role) {
-      query.role = role;
-    }
-
-    if (status === 'active') {
-      query.isActive = true;
-    } else if (status === 'inactive') {
-      query.isActive = false;
-    }
+    if (role && role !== 'all') query.role = role;
+    if (status === 'active') query.isActive = true;
+    else if (status === 'inactive') query.isActive = false;
 
     const skip = (page - 1) * limit;
 
-    const [users, total] = await Promise.all([
+    // Parallel execution for better performance
+    const [users, totalCount] = await Promise.all([
       User.find(query)
-        .select('-otpCode -otpExpires -loginAttempts -accountLocked -lockUntil')
+        .select('firstName lastName phoneNumber role isActive createdAt lastLoginAt') // Only essential fields
         .sort({ createdAt: -1 })
         .skip(skip)
-        .limit(limit),
+        .limit(limit)
+        .lean(), // Use lean() for better performance
       User.countDocuments(query)
     ]);
 
-    const totalPages = Math.ceil(total / limit);
+    const totalPages = Math.ceil(totalCount / limit);
+    const hasNext = page < totalPages;
+    const hasPrev = page > 1;
 
     res.json({
       success: true,
@@ -321,9 +277,10 @@ const getAllUsers = async (req, res) => {
         pagination: {
           currentPage: page,
           totalPages,
-          totalUsers: total,
-          hasNext: page < totalPages,
-          hasPrev: page > 1
+          totalItems: totalCount,
+          itemsPerPage: limit,
+          hasNext,
+          hasPrev
         }
       }
     });

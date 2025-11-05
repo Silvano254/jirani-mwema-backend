@@ -40,8 +40,8 @@ const phoneValidation = [
   body('phoneNumber')
     .notEmpty()
     .withMessage('Phone number is required')
-    .matches(/^\+?254[7][0-9]{8}$|^0[7][0-9]{8}$/)
-    .withMessage('Please enter a valid Kenyan phone number')
+    .matches(/^\+?254[17][0-9]{8}$|^0[17][0-9]{8}$/)
+    .withMessage('Please enter a valid Kenyan phone number (Safaricom or Airtel)')
 ];
 
 const otpValidation = [

@@ -289,6 +289,14 @@ const biometricLogin = async (req, res) => {
       });
     }
 
+    // Check if fingerprint is enabled for this user
+    if (!user.fingerprintEnabled) {
+      return res.status(403).json({
+        success: false,
+        message: 'Biometric login not enabled for this account'
+      });
+    }
+
     await user.updateLastLogin();
 
     // Update device token if provided
@@ -301,6 +309,16 @@ const biometricLogin = async (req, res) => {
     const token = generateToken(user._id);
 
     logger.info(`User ${user.id} logged in with biometrics`);
+
+    // Log biometric login
+    await AuditLog.logAction({
+      action: 'BIOMETRIC_LOGIN',
+      userId: user._id,
+      details: 'User logged in successfully using biometric authentication',
+      ipAddress: req.ip || req.connection.remoteAddress,
+      userAgent: req.get('User-Agent'),
+      result: 'SUCCESS'
+    });
 
     res.status(200).json({
       success: true,
@@ -349,6 +367,18 @@ const toggleFingerprint = async (req, res) => {
 
     const oldValue = user.fingerprintEnabled;
     user.fingerprintEnabled = enabled;
+    
+    // Simple implementation - just toggle the setting without complex token management
+    if (enabled) {
+      // Initialize fingerprint devices array if not exists
+      if (!user.fingerprintDevices) {
+        user.fingerprintDevices = [];
+      }
+    } else {
+      // Clear all fingerprint devices when disabled
+      user.fingerprintDevices = [];
+    }
+    
     await user.save();
 
     logger.info(`User ${userId} fingerprint changed from ${oldValue} to ${enabled}`);
@@ -371,7 +401,17 @@ const toggleFingerprint = async (req, res) => {
       success: true,
       message: `Fingerprint login ${enabled ? 'enabled' : 'disabled'}`,
       data: {
-        fingerprintEnabled: user.fingerprintEnabled
+        fingerprintEnabled: user.fingerprintEnabled,
+        user: {
+          id: user._id,
+          phoneNumber: user.phoneNumber,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          fullName: user.fullName,
+          role: user.role,
+          isActive: user.isActive,
+          fingerprintEnabled: user.fingerprintEnabled
+        }
       }
     });
   } catch (error) {

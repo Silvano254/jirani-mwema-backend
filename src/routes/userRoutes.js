@@ -73,8 +73,8 @@ const updateProfileValidation = [
   body('emergencyContact')
     .optional()
     .trim()
-    .matches(/^\+?254[7][0-9]{8}$|^0[7][0-9]{8}$/)
-    .withMessage('Emergency contact must be a valid Kenyan phone number')
+    .matches(/^\+?254[17][0-9]{8}$|^0[17][0-9]{8}$/)
+    .withMessage('Emergency contact must be a valid Kenyan phone number (Safaricom or Airtel)')
 ];
 
 const roleValidation = [
@@ -102,8 +102,8 @@ const memberRegistrationValidation = [
     .withMessage('Last name is required and must be between 2 and 50 characters'),
   body('phoneNumber')
     .notEmpty()
-    .matches(/^\+?254[7][0-9]{8}$|^0[7][0-9]{8}$/)
-    .withMessage('Valid Kenyan phone number is required'),
+    .matches(/^\+?254[17][0-9]{8}$|^0[17][0-9]{8}$/)
+    .withMessage('Valid Kenyan phone number is required (Safaricom or Airtel)'),
   body('nationalId')
     .notEmpty()
     .trim()

@@ -33,22 +33,16 @@ class SMSService {
         return false;
       }
 
-      // Try without sender ID first to avoid 401 errors
+      // Use a simple sender ID or no sender ID to avoid blacklisting
       let options = {
         to: [formattedNumber],
         message: message,
-        // Temporarily comment out sender ID to test
-        // from: process.env.AT_SENDER_ID || 'AFRICASTKNG'
+        // Use a short, simple sender ID or leave it out
+        from: 'JIRANI'
       };
 
-      logger.info(`Attempting SMS to ${formattedNumber} without sender ID first...`);
+      logger.info(`Sending SMS to ${formattedNumber}...`);
       let response = await this.sms.send(options);
-      
-      // If successful without sender ID, great!
-      // If we get InvalidSenderId error, we already don't have one
-      if (response.SMSMessageData.Message === 'InvalidSenderId') {
-        logger.warn('Invalid sender ID error even without sender ID');
-      }
       
       if (response.SMSMessageData.Recipients.length > 0) {
         const recipient = response.SMSMessageData.Recipients[0];
@@ -57,7 +51,27 @@ class SMSService {
           logger.info(`SMS sent successfully to ${formattedNumber}: ${recipient.messageId}`);
           return true;
         } else {
-          logger.error(`SMS failed to ${formattedNumber}: ${recipient.status}`);
+          logger.error(`SMS failed to ${formattedNumber}: ${recipient.status} - ${recipient.description || 'No description'}`);
+          
+          // If we get blacklisted error, try without sender ID
+          if (recipient.status.includes('blacklist') || recipient.status.includes('InvalidSenderId')) {
+            logger.info('Retrying SMS without sender ID due to blacklist/invalid sender...');
+            const optionsNoSender = {
+              to: [formattedNumber],
+              message: message
+              // No sender ID
+            };
+            
+            const retryResponse = await this.sms.send(optionsNoSender);
+            if (retryResponse.SMSMessageData.Recipients.length > 0) {
+              const retryRecipient = retryResponse.SMSMessageData.Recipients[0];
+              if (retryRecipient.status === 'Success') {
+                logger.info(`SMS retry successful to ${formattedNumber}: ${retryRecipient.messageId}`);
+                return true;
+              }
+            }
+          }
+          
           return false;
         }
       }
@@ -196,9 +210,9 @@ class SMSService {
 
     // Kenya mobile numbers: 
     // Safaricom: +254 7xx xxx xxx (700-799)
-    // Airtel: +254 73x xxx xxx, +254 78x xxx xxx, +254 1xx xxx xxx
+    // Airtel: +254 73x xxx xxx, +254 78x xxx xxx, +254 1xx xxx xxx (100-199)
     // Telkom: +254 77x xxx xxx
-    // Updated regex to support all major Kenya networks
+    // Updated regex to support all major Kenya networks including Airtel
     const kenyaMobileRegex = /^\+254[17][0-9]{8}$/;
     return kenyaMobileRegex.test(formatted);
   }

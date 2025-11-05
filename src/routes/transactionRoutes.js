@@ -329,6 +329,20 @@ router.get('/balance/:userId',
 );
 
 /**
+ * @route   GET /api/transactions/balance/me
+ * @desc    Calculate current user's balance
+ * @access  Private (All authenticated users)
+ */
+router.get('/balance/me',
+  (req, res, next) => {
+    // Set the userId to the authenticated user's ID
+    req.params.userId = req.user.id;
+    next();
+  },
+  calculateUserBalance
+);
+
+/**
  * @route   GET /api/transactions/type/:type
  * @desc    Get transactions by type
  * @access  Private (Admin/Treasurer)

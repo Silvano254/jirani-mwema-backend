@@ -604,7 +604,7 @@ const registerMember = async (req, res) => {
     // Send welcome SMS
     try {
       const smsService = require('../services/smsService');
-      await smsService.sendWelcomeSMS(phoneNumber, `${firstName} ${lastName}`);
+      await smsService.sendWelcomeMessage(phoneNumber, `${firstName} ${lastName}`);
     } catch (smsError) {
       logger.error('Failed to send welcome SMS:', smsError);
       // Don't fail registration if SMS fails
