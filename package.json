@@ -5,9 +5,12 @@
   "main": "src/app.js",
   "scripts": {
     "start": "node src/app.js",
+    "start:prod": "NODE_ENV=production node src/app.js",
     "dev": "nodemon src/app.js",
     "test": "jest",
-    "lint": "eslint src/"
+    "lint": "eslint src/",
+    "prestart": "echo 'Starting Jirani Mwema Backend...'",
+    "health": "curl -f http://localhost:$PORT/health || exit 1"
   },
   "engines": {
     "node": "18.x"

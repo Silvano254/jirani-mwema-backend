@@ -5,7 +5,33 @@ const morgan = require('morgan');
 const rateLimit = require('express-rate-limit');
 require('dotenv').config();
 
-const connectDB = require('./config/db');
+// Initialize Express app first
+const app = express();
+
+// Trust proxy for Railway deployment
+app.set('trust proxy', true);
+
+// Global database connection status
+let dbConnected = false;
+
+// Async function to setup database
+async function setupDatabase() {
+  try {
+    const connectDB = require('./config/db');
+    await connectDB();
+    dbConnected = true;
+    console.log('✅ Database connection established');
+  } catch (error) {
+    console.error('❌ Database connection failed:', error.message);
+    dbConnected = false;
+    // Continue without database - app can still serve health checks
+  }
+}
+
+// Setup database connection
+setupDatabase();
+
+// Import error handler and routes after app initialization
 const errorHandler = require('./middleware/errorHandler');
 
 // Route imports
@@ -16,25 +42,6 @@ const proxyRoutes = require('./routes/proxyRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
 const meetingRoutes = require('./routes/meetingRoutes');
 const adminRoutes = require('./routes/adminRoutes');
-
-const app = express();
-
-// Trust proxy for Railway deployment
-app.set('trust proxy', true);
-
-// Global database connection status
-let dbConnected = false;
-
-// Connect to database asynchronously (don't block server startup)
-connectDB()
-  .then(() => {
-    dbConnected = true;
-    console.log('Database connection established');
-  })
-  .catch((error) => {
-    console.error('Database connection failed:', error);
-    dbConnected = false;
-  });
 
 // Security middleware
 app.set('trust proxy', 1); // Trust first proxy (Railway)
@@ -51,14 +58,36 @@ const limiter = rateLimit({
 });
 app.use(limiter);
 
-// Logging
-app.use(morgan('combined'));
+// Simple root endpoint
+app.get('/', (req, res) => {
+  res.status(200).json({
+    message: 'Jirani Mwema Backend API',
+    version: '1.0.0',
+    status: 'running',
+    timestamp: new Date().toISOString()
+  });
+});
 
-// Body parsing middleware
-app.use(express.json({ limit: '10mb' }));
+// Logging with better error handling
+if (process.env.NODE_ENV !== 'test') {
+  app.use(morgan('combined'));
+}
+
+// Body parsing middleware with better error handling
+app.use(express.json({ 
+  limit: '10mb',
+  verify: (req, res, buf) => {
+    try {
+      JSON.parse(buf);
+    } catch (e) {
+      res.status(400).json({ error: 'Invalid JSON' });
+      throw new Error('Invalid JSON');
+    }
+  }
+}));
 app.use(express.urlencoded({ extended: true }));
 
-// Health check endpoint - responds even if DB is not connected
+// Health check endpoint - responds even if DB is not connected (should be early in middleware stack)
 app.get('/health', (req, res) => {
   const healthStatus = {
     status: 'OK',
@@ -68,6 +97,8 @@ app.get('/health', (req, res) => {
     database: dbConnected ? 'connected' : 'disconnected',
     uptime: process.uptime(),
     environment: {
+      nodeEnv: process.env.NODE_ENV || 'development',
+      port: process.env.PORT || '3000',
       mongoUri: process.env.MONGODB_URI ? 'configured' : 'missing',
       atApiKey: process.env.AT_API_KEY ? 'configured' : 'missing',
       atUsername: process.env.AT_USERNAME ? 'configured' : 'missing'
@@ -75,6 +106,16 @@ app.get('/health', (req, res) => {
   };
   
   res.status(200).json(healthStatus);
+});
+
+// Simple root endpoint
+app.get('/', (req, res) => {
+  res.status(200).json({
+    message: 'Jirani Mwema Backend API',
+    version: '1.0.0',
+    status: 'running',
+    timestamp: new Date().toISOString()
+  });
 });
 
 // App hit counter for debugging
@@ -264,15 +305,6 @@ app.post('/test-sms', async (req, res) => {
   }
 });
 
-// Simple root endpoint
-app.get('/', (req, res) => {
-  res.status(200).json({
-    message: 'Jirani Mwema Backend API',
-    version: '1.0.0',
-    status: 'running'
-  });
-});
-
 // IP check endpoint for Railway
 app.get('/ip', async (req, res) => {
   try {
@@ -312,8 +344,39 @@ app.use(errorHandler);
 
 const PORT = process.env.PORT || 3000;
 
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Jirani Mwema Backend running on port ${PORT}`);
-  console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`Database: ${process.env.MONGODB_URI ? 'Connected' : 'Not configured'}`);
+// Enhanced server startup with error handling
+const server = app.listen(PORT, '0.0.0.0', () => {
+  console.log(`🚀 Jirani Mwema Backend running on port ${PORT}`);
+  console.log(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`🗄️  Database: ${process.env.MONGODB_URI ? 'Configured' : 'Not configured'}`);
+  console.log(`⏰ Started at: ${new Date().toISOString()}`);
+});
+
+// Graceful shutdown handlers
+process.on('SIGTERM', () => {
+  console.log('🛑 SIGTERM received, shutting down gracefully...');
+  server.close(() => {
+    console.log('✅ Server closed successfully');
+    process.exit(0);
+  });
+});
+
+process.on('SIGINT', () => {
+  console.log('🛑 SIGINT received, shutting down gracefully...');
+  server.close(() => {
+    console.log('✅ Server closed successfully');
+    process.exit(0);
+  });
+});
+
+// Handle uncaught exceptions
+process.on('uncaughtException', (error) => {
+  console.error('💥 Uncaught Exception:', error);
+  process.exit(1);
+});
+
+// Handle unhandled promise rejections
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('💥 Unhandled Rejection at:', promise, 'reason:', reason);
+  process.exit(1);
 });
