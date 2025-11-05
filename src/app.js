@@ -85,9 +85,9 @@ app.post('/app-debug', (req, res) => {
   appHitCounter++;
   const { action, data } = req.body;
   
-  console.log(`🔥 APP HIT #${appHitCounter}: ${action}`);
-  console.log(`📱 Data:`, data);
-  console.log(`🕒 Time: ${new Date().toISOString()}`);
+  console.log(` APP HIT #${appHitCounter}: ${action}`);
+  console.log(` Data:`, data);
+  console.log(` Time: ${new Date().toISOString()}`);
   
   res.json({
     success: true,
