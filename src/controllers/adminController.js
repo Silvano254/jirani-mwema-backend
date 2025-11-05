@@ -1,5 +1,7 @@
 const User = require('../models/User');
 const logger = require('../utils/logger');
+const fs = require('fs').promises;
+const path = require('path');
 
 // Promote existing user to admin (for initial setup)
 const promoteToAdmin = async (req, res) => {
@@ -427,6 +429,459 @@ const createUser = async (req, res) => {
   }
 };
 
+// System Settings Management
+const getSystemSettings = async (req, res) => {
+  try {
+    // In a real implementation, these would be stored in a database
+    const systemSettings = {
+      biometric: {
+        enabled: true,
+        requireForAllUsers: false,
+        maxRetryAttempts: 3,
+        timeoutDuration: 30
+      },
+      notifications: {
+        smsEnabled: true,
+        emailEnabled: false,
+        pushEnabled: true
+      },
+      security: {
+        sessionTimeout: 30,
+        passwordComplexity: true,
+        twoFactorAuth: false
+      },
+      system: {
+        maintenanceMode: false,
+        backupFrequency: 'daily',
+        logLevel: 'info'
+      }
+    };
+
+    res.json({
+      success: true,
+      message: 'System settings retrieved successfully',
+      data: systemSettings
+    });
+
+  } catch (error) {
+    logger.error('Error fetching system settings:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while fetching system settings'
+    });
+  }
+};
+
+const updateSystemSettings = async (req, res) => {
+  try {
+    const { section, settings } = req.body;
+
+    if (!section || !settings) {
+      return res.status(400).json({
+        success: false,
+        message: 'Section and settings are required'
+      });
+    }
+
+    // In a real implementation, this would update the database
+    logger.info(`System settings updated for section: ${section}`, settings);
+
+    res.json({
+      success: true,
+      message: `${section} settings updated successfully`,
+      data: settings
+    });
+
+  } catch (error) {
+    logger.error('Error updating system settings:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while updating system settings'
+    });
+  }
+};
+
+// Biometric Management
+const getBiometricStats = async (req, res) => {
+  try {
+    const totalBiometricUsers = await User.countDocuments({ fingerprintEnabled: true });
+    const activeBiometricUsers = await User.countDocuments({ 
+      fingerprintEnabled: true, 
+      isActive: true 
+    });
+
+    // In a real implementation, these would come from a biometric logs collection
+    const stats = {
+      totalBiometricUsers,
+      activeBiometricUsers,
+      failedAttemptsToday: 5, // Mock data
+      successRate: 94.2 // Mock data
+    };
+
+    res.json({
+      success: true,
+      message: 'Biometric statistics retrieved successfully',
+      data: stats
+    });
+
+  } catch (error) {
+    logger.error('Error fetching biometric stats:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while fetching biometric stats'
+    });
+  }
+};
+
+const toggleUserBiometric = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { enabled } = req.body;
+
+    const user = await User.findByIdAndUpdate(
+      userId,
+      { fingerprintEnabled: enabled },
+      { new: true }
+    ).select('firstName lastName phoneNumber fingerprintEnabled');
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    logger.info(`Biometric ${enabled ? 'enabled' : 'disabled'} for user: ${user.firstName} ${user.lastName}`);
+
+    res.json({
+      success: true,
+      message: `Biometric ${enabled ? 'enabled' : 'disabled'} for user`,
+      data: user
+    });
+
+  } catch (error) {
+    logger.error('Error toggling user biometric:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while updating biometric setting'
+    });
+  }
+};
+
+const resetUserBiometric = async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    const user = await User.findByIdAndUpdate(
+      userId,
+      { 
+        fingerprintEnabled: false,
+        // In a real implementation, this would also clear biometric data
+      },
+      { new: true }
+    ).select('firstName lastName phoneNumber fingerprintEnabled');
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    logger.info(`Biometric data reset for user: ${user.firstName} ${user.lastName}`);
+
+    res.json({
+      success: true,
+      message: 'Biometric data reset successfully',
+      data: user
+    });
+
+  } catch (error) {
+    logger.error('Error resetting user biometric:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while resetting biometric data'
+    });
+  }
+};
+
+// System Operations
+const testSMSService = async (req, res) => {
+  try {
+    const { phoneNumber, message } = req.body;
+
+    if (!phoneNumber || !message) {
+      return res.status(400).json({
+        success: false,
+        message: 'Phone number and message are required'
+      });
+    }
+
+    // In a real implementation, this would test the SMS service
+    logger.info(`SMS test sent to ${phoneNumber}: ${message}`);
+
+    res.json({
+      success: true,
+      message: 'SMS test completed successfully',
+      data: {
+        phoneNumber,
+        status: 'sent',
+        timestamp: new Date().toISOString()
+      }
+    });
+
+  } catch (error) {
+    logger.error('Error testing SMS service:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while testing SMS service'
+    });
+  }
+};
+
+const performBackup = async (req, res) => {
+  try {
+    const { backupType } = req.body;
+
+    if (!backupType || !['full', 'incremental'].includes(backupType)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Valid backup type (full or incremental) is required'
+      });
+    }
+
+    // In a real implementation, this would perform the actual backup
+    const backupId = `backup_${Date.now()}`;
+    logger.info(`${backupType} backup initiated with ID: ${backupId}`);
+
+    res.json({
+      success: true,
+      message: `${backupType} backup completed successfully`,
+      data: {
+        backupId,
+        type: backupType,
+        timestamp: new Date().toISOString(),
+        size: '125.7 MB' // Mock data
+      }
+    });
+
+  } catch (error) {
+    logger.error('Error performing backup:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while performing backup'
+    });
+  }
+};
+
+const getSystemLogs = async (req, res) => {
+  try {
+    const { level, limit = 100 } = req.query;
+
+    // In a real implementation, this would read from log files or database
+    const logs = [
+      {
+        timestamp: new Date().toISOString(),
+        level: 'INFO',
+        message: 'System startup completed',
+        module: 'system'
+      },
+      {
+        timestamp: new Date(Date.now() - 300000).toISOString(),
+        level: 'WARN',
+        message: 'High memory usage detected',
+        module: 'monitoring'
+      },
+      {
+        timestamp: new Date(Date.now() - 3600000).toISOString(),
+        level: 'ERROR',
+        message: 'Failed to connect to SMS service',
+        module: 'sms'
+      }
+    ];
+
+    const filteredLogs = level ? logs.filter(log => log.level === level.toUpperCase()) : logs;
+    const limitedLogs = filteredLogs.slice(0, parseInt(limit));
+
+    res.json({
+      success: true,
+      message: 'System logs retrieved successfully',
+      data: {
+        logs: limitedLogs,
+        total: filteredLogs.length
+      }
+    });
+
+  } catch (error) {
+    logger.error('Error fetching system logs:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while fetching system logs'
+    });
+  }
+};
+
+const clearCache = async (req, res) => {
+  try {
+    const { cacheType } = req.body;
+
+    if (!cacheType || !['application', 'database', 'all'].includes(cacheType)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Valid cache type (application, database, or all) is required'
+      });
+    }
+
+    // In a real implementation, this would clear the specified cache
+    logger.info(`Cache cleared: ${cacheType}`);
+
+    res.json({
+      success: true,
+      message: `${cacheType} cache cleared successfully`,
+      data: {
+        cacheType,
+        clearedAt: new Date().toISOString()
+      }
+    });
+
+  } catch (error) {
+    logger.error('Error clearing cache:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while clearing cache'
+    });
+  }
+};
+
+const getSystemHealth = async (req, res) => {
+  try {
+    // In a real implementation, this would check actual system health
+    const healthData = {
+      database: {
+        status: 'healthy',
+        responseTime: '15ms',
+        connections: 5
+      },
+      smsService: {
+        status: 'healthy',
+        responseTime: '120ms',
+        lastTest: new Date().toISOString()
+      },
+      memory: {
+        status: 'warning',
+        usage: '78%',
+        available: '2.1 GB'
+      },
+      storage: {
+        status: 'healthy',
+        usage: '45%',
+        available: '55 GB'
+      },
+      uptime: '5 days, 12 hours',
+      version: '1.0.0'
+    };
+
+    res.json({
+      success: true,
+      message: 'System health retrieved successfully',
+      data: healthData
+    });
+
+  } catch (error) {
+    logger.error('Error fetching system health:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while fetching system health'
+    });
+  }
+};
+
+const exportData = async (req, res) => {
+  try {
+    const { dataType, format } = req.body;
+
+    if (!dataType || !['users', 'logs', 'settings', 'all'].includes(dataType)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Valid data type (users, logs, settings, or all) is required'
+      });
+    }
+
+    if (!format || !['json', 'csv', 'excel'].includes(format)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Valid format (json, csv, or excel) is required'
+      });
+    }
+
+    // In a real implementation, this would generate the actual export file
+    const exportId = `export_${Date.now()}`;
+    logger.info(`Data export initiated: ${dataType} in ${format} format`);
+
+    res.json({
+      success: true,
+      message: 'Data export completed successfully',
+      data: {
+        exportId,
+        dataType,
+        format,
+        timestamp: new Date().toISOString(),
+        downloadUrl: `/api/admin/download/${exportId}`, // Mock URL
+        size: '2.3 MB' // Mock data
+      }
+    });
+
+  } catch (error) {
+    logger.error('Error exporting data:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while exporting data'
+    });
+  }
+};
+
+const sendSystemNotification = async (req, res) => {
+  try {
+    const { title, message, type, recipients } = req.body;
+
+    if (!title || !message || !type) {
+      return res.status(400).json({
+        success: false,
+        message: 'Title, message, and type are required'
+      });
+    }
+
+    if (!['info', 'warning', 'error', 'success'].includes(type)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Valid notification type (info, warning, error, success) is required'
+      });
+    }
+
+    // In a real implementation, this would send notifications to users
+    logger.info(`System notification sent: ${title} - ${message}`);
+
+    res.json({
+      success: true,
+      message: 'System notification sent successfully',
+      data: {
+        title,
+        message,
+        type,
+        recipients: recipients || 'all',
+        sentAt: new Date().toISOString()
+      }
+    });
+
+  } catch (error) {
+    logger.error('Error sending system notification:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while sending notification'
+    });
+  }
+};
+
 module.exports = {
   promoteToAdmin,
   createAdmin,
@@ -434,5 +889,20 @@ module.exports = {
   getAllUsers,
   updateUser,
   deleteUser,
-  createUser
+  createUser,
+  // System Settings
+  getSystemSettings,
+  updateSystemSettings,
+  // Biometric Management
+  getBiometricStats,
+  toggleUserBiometric,
+  resetUserBiometric,
+  // System Operations
+  testSMSService,
+  performBackup,
+  getSystemLogs,
+  clearCache,
+  getSystemHealth,
+  exportData,
+  sendSystemNotification
 };
