@@ -7,7 +7,7 @@ const userSchema = new mongoose.Schema({
     required: true,
     unique: true,
     trim: true,
-    match: [/^\+?254[17][0-9]{8}$|^0[17][0-9]{8}$/, 'Please enter a valid Kenyan phone number']
+    match: [/^\+?254[7][0-9]{8}$|^0[7][0-9]{8}$/, 'Please enter a valid Kenyan phone number']
   },
   firstName: {
     type: String,
@@ -150,6 +150,42 @@ userSchema.methods.updateLastLogin = function() {
 userSchema.methods.isAdmin = function() {
   return ['chairperson', 'secretary', 'treasurer'].includes(this.role);
 };
+
+// Phone number normalization middleware
+userSchema.pre('save', function(next) {
+  if (this.isModified('phoneNumber') || this.isNew) {
+    this.phoneNumber = normalizePhoneNumber(this.phoneNumber);
+  }
+  next();
+});
+
+// Helper function to normalize phone numbers
+function normalizePhoneNumber(phoneNumber) {
+  if (!phoneNumber) return phoneNumber;
+  
+  // Remove all spaces and special characters except +
+  let normalized = phoneNumber.replace(/[\s\-\(\)]/g, '');
+  
+  // Convert 07XXXXXXXX to +254XXXXXXXX
+  if (normalized.startsWith('07')) {
+    normalized = '+254' + normalized.substring(1);
+  }
+  // Convert 7XXXXXXXX to +2547XXXXXXXX
+  else if (normalized.match(/^7[0-9]{8}$/)) {
+    normalized = '+254' + normalized;
+  }
+  // If already has +254, ensure it's properly formatted
+  else if (normalized.startsWith('+254')) {
+    // Remove any extra + signs
+    normalized = '+254' + normalized.substring(4).replace(/\+/g, '');
+  }
+  // Convert 254XXXXXXXX to +254XXXXXXXX
+  else if (normalized.startsWith('254') && normalized.length === 12) {
+    normalized = '+' + normalized;
+  }
+  
+  return normalized;
+}
 
 // Ensure virtual fields are serialized
 userSchema.set('toJSON', {

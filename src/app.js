@@ -20,9 +20,9 @@ async function setupDatabase() {
     const connectDB = require('./config/db');
     await connectDB();
     dbConnected = true;
-    console.log('✅ Database connection established');
+    console.log(' Database connection established');
   } catch (error) {
-    console.error('❌ Database connection failed:', error.message);
+    console.error(' Database connection failed:', error.message);
     dbConnected = false;
     // Continue without database - app can still serve health checks
   }
@@ -42,6 +42,7 @@ const proxyRoutes = require('./routes/proxyRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
 const meetingRoutes = require('./routes/meetingRoutes');
 const adminRoutes = require('./routes/adminRoutes');
+const reportRoutes = require('./routes/reportRoutes');
 
 // Security middleware
 app.set('trust proxy', 1); // Trust first proxy (Railway)
@@ -330,6 +331,7 @@ app.use('/api/proxy', proxyRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/meetings', meetingRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/reports', reportRoutes);
 
 // 404 handler
 app.use('*', (req, res) => {

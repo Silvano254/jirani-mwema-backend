@@ -4,6 +4,34 @@ const otpService = require('../services/otpService');
 const smsService = require('../services/smsService');
 const logger = require('../utils/logger');
 
+// Helper function to normalize phone numbers
+const normalizePhoneNumber = (phoneNumber) => {
+  if (!phoneNumber) return phoneNumber;
+  
+  // Remove all spaces and special characters except +
+  let normalized = phoneNumber.replace(/[\s\-\(\)]/g, '');
+  
+  // Convert 07XXXXXXXX to +254XXXXXXXX
+  if (normalized.startsWith('07')) {
+    normalized = '+254' + normalized.substring(1);
+  }
+  // Convert 7XXXXXXXX to +2547XXXXXXXX
+  else if (normalized.match(/^7[0-9]{8}$/)) {
+    normalized = '+254' + normalized;
+  }
+  // If already has +254, ensure it's properly formatted
+  else if (normalized.startsWith('+254')) {
+    // Remove any extra + signs
+    normalized = '+254' + normalized.substring(4).replace(/\+/g, '');
+  }
+  // Convert 254XXXXXXXX to +254XXXXXXXX
+  else if (normalized.startsWith('254') && normalized.length === 12) {
+    normalized = '+' + normalized;
+  }
+  
+  return normalized;
+};
+
 // Generate JWT token
 const generateToken = (userId) => {
   return jwt.sign(
@@ -16,7 +44,7 @@ const generateToken = (userId) => {
 // Send OTP for login
 const sendOTP = async (req, res) => {
   try {
-    const { phoneNumber } = req.body;
+    let { phoneNumber } = req.body;
 
     if (!phoneNumber) {
       return res.status(400).json({
@@ -24,6 +52,9 @@ const sendOTP = async (req, res) => {
         message: 'Phone number is required'
       });
     }
+
+    // Normalize phone number for consistent lookup
+    phoneNumber = normalizePhoneNumber(phoneNumber);
 
     // Find user by phone number
     const user = await User.findOne({ phoneNumber });
@@ -119,7 +150,7 @@ const sendOTP = async (req, res) => {
 // Verify OTP and login
 const verifyOTP = async (req, res) => {
   try {
-    const { phoneNumber, otp, deviceToken } = req.body;
+    let { phoneNumber, otp, deviceToken } = req.body;
 
     if (!phoneNumber || !otp) {
       return res.status(400).json({
@@ -127,6 +158,9 @@ const verifyOTP = async (req, res) => {
         message: 'Phone number and OTP are required'
       });
     }
+
+    // Normalize phone number for consistent lookup
+    phoneNumber = normalizePhoneNumber(phoneNumber);
 
     // Find user
     const user = await User.findOne({ phoneNumber });
@@ -206,7 +240,7 @@ const verifyOTP = async (req, res) => {
 // Biometric login
 const biometricLogin = async (req, res) => {
   try {
-    const { phoneNumber, deviceToken } = req.body;
+    let { phoneNumber, deviceToken } = req.body;
 
     if (!phoneNumber) {
       return res.status(400).json({
@@ -214,6 +248,9 @@ const biometricLogin = async (req, res) => {
         message: 'Phone number is required'
       });
     }
+
+    // Normalize phone number for consistent lookup
+    phoneNumber = normalizePhoneNumber(phoneNumber);
 
     const user = await User.findOne({ phoneNumber });
     if (!user) {
@@ -278,18 +315,22 @@ const toggleFingerprint = async (req, res) => {
     const { enabled } = req.body;
     const userId = req.user.id;
 
+    logger.info(`User ${userId} attempting to ${enabled ? 'enable' : 'disable'} fingerprint`);
+
     const user = await User.findById(userId);
     if (!user) {
+      logger.error(`User ${userId} not found when toggling fingerprint`);
       return res.status(404).json({
         success: false,
         message: 'User not found'
       });
     }
 
+    const oldValue = user.fingerprintEnabled;
     user.fingerprintEnabled = enabled;
     await user.save();
 
-    logger.info(`User ${userId} ${enabled ? 'enabled' : 'disabled'} fingerprint login`);
+    logger.info(`User ${userId} fingerprint changed from ${oldValue} to ${enabled}`);
 
     res.status(200).json({
       success: true,
@@ -298,9 +339,8 @@ const toggleFingerprint = async (req, res) => {
         fingerprintEnabled: user.fingerprintEnabled
       }
     });
-
   } catch (error) {
-    logger.error('Toggle fingerprint error:', error);
+    logger.error('Error toggling fingerprint:', error);
     res.status(500).json({
       success: false,
       message: 'Internal server error'

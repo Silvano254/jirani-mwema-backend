@@ -22,7 +22,11 @@ const {
   clearCache,
   getSystemHealth,
   exportData,
-  sendSystemNotification
+  sendSystemNotification,
+  // Audit and Stats
+  getAuditLogs,
+  getSystemStats,
+  getSecurityEvents
 } = require('../controllers/adminController');
 const { protect, authorize } = require('../middleware/authMiddleware');
 
@@ -161,5 +165,27 @@ router.post('/export-data', protect, authorize('admin'), exportData);
  * @access  Private (Admin only)
  */
 router.post('/send-notification', protect, authorize('admin'), sendSystemNotification);
+
+// Audit and Statistics Routes
+/**
+ * @route   GET /api/admin/audit-log
+ * @desc    Get audit logs
+ * @access  Private (Admin only)
+ */
+router.get('/audit-log', protect, authorize('admin'), getAuditLogs);
+
+/**
+ * @route   GET /api/admin/stats
+ * @desc    Get system statistics
+ * @access  Private (Admin only)
+ */
+router.get('/stats', protect, authorize('admin'), getSystemStats);
+
+/**
+ * @route   GET /api/admin/security-events
+ * @desc    Get security monitoring events
+ * @access  Private (Admin only)
+ */
+router.get('/security-events', protect, authorize('admin'), getSecurityEvents);
 
 module.exports = router;
