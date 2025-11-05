@@ -7,7 +7,7 @@ const userSchema = new mongoose.Schema({
     required: true,
     unique: true,
     trim: true,
-    match: [/^\+?254[7][0-9]{8}$|^0[7][0-9]{8}$/, 'Please enter a valid Kenyan phone number']
+    match: [/^\+254[7][0-9]{8}$|^0[7][0-9]{8}$|^[7][0-9]{8}$/, 'Please enter a valid Kenyan phone number']
   },
   firstName: {
     type: String,
