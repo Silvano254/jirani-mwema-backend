@@ -83,8 +83,60 @@ const meetingSchema = new mongoose.Schema({
     maxlength: 200
   }],
   minutes: {
-    type: String,
-    maxlength: 2000
+    content: {
+      type: String,
+      maxlength: 2000,
+      default: ''
+    },
+    decisions: [{
+      topic: {
+        type: String,
+        maxlength: 200
+      },
+      decision: {
+        type: String,
+        maxlength: 500
+      },
+      votes: {
+        for: { type: Number, default: 0 },
+        against: { type: Number, default: 0 },
+        abstention: { type: Number, default: 0 }
+      }
+    }],
+    actionItems: [{
+      description: {
+        type: String,
+        required: true,
+        maxlength: 300
+      },
+      assignedTo: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+      },
+      dueDate: Date,
+      status: {
+        type: String,
+        enum: ['pending', 'in-progress', 'completed'],
+        default: 'pending'
+      }
+    }],
+    attendees: [{
+      user: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+      },
+      status: {
+        type: String,
+        enum: ['present', 'absent', 'late'],
+        default: 'present'
+      }
+    }],
+    recordedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User'
+    },
+    recordedAt: Date,
+    lastUpdated: Date
   },
   attendees: [attendeeSchema],
   createdBy: {
@@ -110,10 +162,26 @@ const meetingSchema = new mongoose.Schema({
     type: Boolean,
     default: true
   },
-  remindersSent: {
-    type: Number,
-    default: 0
-  },
+  remindersSent: [{
+    sentAt: {
+      type: Date,
+      required: true
+    },
+    sentBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: true
+    },
+    successCount: {
+      type: Number,
+      default: 0
+    },
+    failureCount: {
+      type: Number,
+      default: 0
+    },
+    message: String
+  }],
   lastReminderSent: {
     type: Date
   },

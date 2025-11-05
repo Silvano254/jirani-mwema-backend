@@ -269,7 +269,7 @@ const getNotificationById = async (req, res) => {
 
     // Check if user can access this notification
     if (notification.recipient._id.toString() !== req.user.id && 
-        req.user.role !== 'admin' && req.user.role !== 'secretary') {
+        !['admin', 'chairperson', 'secretary'].includes(req.user.role)) {
       return res.status(403).json({
         success: false,
         message: 'Access denied'
@@ -494,7 +494,7 @@ const deleteNotification = async (req, res) => {
     const query = { _id: id };
     
     // If not admin/secretary, can only delete own notifications
-    if (req.user.role !== 'admin' && req.user.role !== 'secretary') {
+    if (!['admin', 'chairperson', 'secretary'].includes(req.user.role)) {
       query.recipient = req.user.id;
     }
 

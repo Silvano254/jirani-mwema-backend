@@ -70,6 +70,68 @@ const userSchema = new mongoose.Schema({
   lockUntil: {
     type: Date,
     default: null
+  },
+  fingerprintDevices: [{
+    deviceId: {
+      type: String,
+      required: true
+    },
+    token: {
+      type: String,
+      required: true
+    },
+    enabledAt: {
+      type: Date,
+      default: Date.now
+    },
+    lastUsedAt: {
+      type: Date,
+      default: null
+    },
+    isActive: {
+      type: Boolean,
+      default: true
+    }
+  }],
+  notificationSettings: {
+    pushNotifications: {
+      type: Boolean,
+      default: true
+    },
+    smsNotifications: {
+      type: Boolean,
+      default: true
+    },
+    emailNotifications: {
+      type: Boolean,
+      default: false
+    },
+    meetingReminders: {
+      type: Boolean,
+      default: true
+    },
+    paymentAlerts: {
+      type: Boolean,
+      default: true
+    },
+    systemUpdates: {
+      type: Boolean,
+      default: false
+    },
+    quietHours: {
+      enabled: {
+        type: Boolean,
+        default: false
+      },
+      startTime: {
+        type: String,
+        default: '22:00'
+      },
+      endTime: {
+        type: String,
+        default: '06:00'
+      }
+    }
   }
 }, {
   timestamps: true
@@ -148,7 +210,7 @@ userSchema.methods.updateLastLogin = function() {
 };
 
 userSchema.methods.isAdmin = function() {
-  return ['chairperson', 'secretary', 'treasurer'].includes(this.role);
+  return ['admin', 'chairperson', 'secretary', 'treasurer'].includes(this.role);
 };
 
 // Phone number normalization middleware

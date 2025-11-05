@@ -88,9 +88,9 @@ const authorize = (...roles) => {
   };
 };
 
-// Admin only access (chairperson, secretary, treasurer)
+// Admin only access (admin, chairperson, secretary, treasurer)
 const adminOnly = (req, res, next) => {
-  const adminRoles = ['chairperson', 'secretary', 'treasurer'];
+  const adminRoles = ['admin', 'chairperson', 'secretary', 'treasurer'];
   
   if (!req.user) {
     return res.status(401).json({
@@ -139,7 +139,7 @@ const ownerOrAdmin = (req, res, next) => {
 
   const userId = req.params.userId || req.params.id;
   const isOwner = userId && userId === req.user._id.toString();
-  const isAdmin = ['chairperson', 'secretary', 'treasurer'].includes(req.user.role);
+  const isAdmin = ['admin', 'chairperson', 'secretary', 'treasurer'].includes(req.user.role);
 
   if (!isOwner && !isAdmin) {
     return res.status(403).json({

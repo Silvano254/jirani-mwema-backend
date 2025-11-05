@@ -148,7 +148,7 @@ const getProxyActionById = async (req, res) => {
     }
 
     // Check if user can access this proxy action
-    if (req.user.role !== 'admin' && proxyAction.requestedBy._id.toString() !== req.user.id) {
+    if (!['admin', 'chairperson'].includes(req.user.role) && proxyAction.requestedBy._id.toString() !== req.user.id) {
       return res.status(403).json({
         success: false,
         message: 'Access denied'
@@ -566,7 +566,7 @@ const cancelProxyAction = async (req, res) => {
     }
 
     // Check permissions
-    if (req.user.role !== 'admin' && proxyAction.requestedBy.toString() !== req.user.id) {
+    if (!['admin', 'chairperson'].includes(req.user.role) && proxyAction.requestedBy.toString() !== req.user.id) {
       return res.status(403).json({
         success: false,
         message: 'Access denied'

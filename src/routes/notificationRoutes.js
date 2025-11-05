@@ -99,7 +99,7 @@ const bulkNotificationValidation = [
   body('role')
     .if(body('recipientType').equals('role'))
     .isIn(['admin', 'secretary', 'treasurer', 'member'])
-    .withMessage('Role must be one of: admin, secretary, treasurer, member'),
+    .withMessage('Role must be one of: admin, chairperson, secretary, treasurer, member'),
   body('customRecipients')
     .if(body('recipientType').equals('custom'))
     .isArray({ min: 1 })

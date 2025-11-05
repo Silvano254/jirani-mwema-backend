@@ -503,27 +503,181 @@ const deleteMeeting = async (req, res) => {
 
 // Additional helper functions for meeting management
 const sendMeetingReminders = async (req, res) => {
-  // Implementation for sending meeting reminders
-  res.status(200).json({
-    success: true,
-    message: 'Meeting reminders sent successfully'
-  });
+  try {
+    const { id } = req.params;
+    const { customMessage } = req.body;
+
+    const meeting = await Meeting.findById(id);
+    if (!meeting) {
+      return res.status(404).json({
+        success: false,
+        message: 'Meeting not found'
+      });
+    }
+
+    if (meeting.status !== 'scheduled') {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot send reminders for non-scheduled meetings'
+      });
+    }
+
+    // Get all active users
+    const activeUsers = await User.find({ isActive: true }).select('phoneNumber firstName lastName');
+
+    const dateStr = meeting.scheduledDate.toLocaleDateString('en-KE');
+    const timeStr = meeting.scheduledDate.toLocaleTimeString('en-KE', { 
+      hour: '2-digit', 
+      minute: '2-digit' 
+    });
+
+    const defaultMessage = `Reminder: "${meeting.title}" meeting on ${dateStr} at ${timeStr}. Location: ${meeting.location}. Please attend. - Jirani Mwema`;
+    const message = customMessage || defaultMessage;
+
+    let successCount = 0;
+    let failureCount = 0;
+
+    // Send SMS reminders
+    for (const user of activeUsers) {
+      try {
+        await smsService.sendSMS(user.phoneNumber, message);
+        successCount++;
+      } catch (error) {
+        logger.error(`Failed to send reminder to ${user.phoneNumber}:`, error);
+        failureCount++;
+      }
+    }
+
+    // Update meeting with reminder sent timestamp
+    meeting.remindersSent = meeting.remindersSent || [];
+    meeting.remindersSent.push({
+      sentAt: new Date(),
+      sentBy: req.user.id,
+      successCount,
+      failureCount
+    });
+    await meeting.save();
+
+    logger.info('Meeting reminders sent', { 
+      meetingId: id, 
+      sentBy: req.user.id,
+      successCount,
+      failureCount
+    });
+
+    res.status(200).json({
+      success: true,
+      message: `Meeting reminders sent to ${successCount} members`,
+      data: {
+        successCount,
+        failureCount,
+        totalAttempted: activeUsers.length
+      }
+    });
+  } catch (error) {
+    logger.error('Error sending meeting reminders:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while sending meeting reminders'
+    });
+  }
 };
 
 const getMeetingMinutes = async (req, res) => {
-  // Implementation for getting meeting minutes
-  res.status(200).json({
-    success: true,
-    data: {}
-  });
+  try {
+    const { id } = req.params;
+
+    const meeting = await Meeting.findById(id)
+      .select('title scheduledDate minutes createdBy status location')
+      .populate('createdBy', 'firstName lastName')
+      .populate('minutes.recordedBy', 'firstName lastName');
+
+    if (!meeting) {
+      return res.status(404).json({
+        success: false,
+        message: 'Meeting not found'
+      });
+    }
+
+    // Return meeting minutes with metadata
+    res.status(200).json({
+      success: true,
+      data: {
+        meetingId: meeting._id,
+        title: meeting.title,
+        scheduledDate: meeting.scheduledDate,
+        status: meeting.status,
+        location: meeting.location,
+        createdBy: meeting.createdBy,
+        minutes: meeting.minutes || {
+          content: '',
+          decisions: [],
+          actionItems: [],
+          attendees: [],
+          recordedBy: null,
+          recordedAt: null
+        }
+      }
+    });
+  } catch (error) {
+    logger.error('Error fetching meeting minutes:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while fetching meeting minutes'
+    });
+  }
 };
 
 const updateMeetingMinutes = async (req, res) => {
-  // Implementation for updating meeting minutes
-  res.status(200).json({
-    success: true,
-    message: 'Meeting minutes updated successfully'
-  });
+  try {
+    const { id } = req.params;
+    const { content, decisions, actionItems, attendees } = req.body;
+
+    const meeting = await Meeting.findById(id);
+    if (!meeting) {
+      return res.status(404).json({
+        success: false,
+        message: 'Meeting not found'
+      });
+    }
+
+    // Update meeting minutes
+    meeting.minutes = {
+      content: content || '',
+      decisions: decisions || [],
+      actionItems: actionItems || [],
+      attendees: attendees || [],
+      recordedBy: req.user.id,
+      recordedAt: new Date(),
+      lastUpdated: new Date()
+    };
+
+    await meeting.save();
+
+    // Populate the response
+    await meeting.populate('minutes.recordedBy', 'firstName lastName');
+
+    logger.info('Meeting minutes updated', { 
+      meetingId: id, 
+      updatedBy: req.user.id 
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'Meeting minutes updated successfully',
+      data: {
+        meetingId: meeting._id,
+        title: meeting.title,
+        minutes: meeting.minutes
+      }
+    });
+  } catch (error) {
+    logger.error('Error updating meeting minutes:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while updating meeting minutes'
+    });
+  }
 };
 
 module.exports = {

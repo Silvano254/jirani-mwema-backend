@@ -11,7 +11,9 @@ const {
   toggleUserStatus,
   getUserStats,
   bulkUpdateUsers,
-  registerMember
+  registerMember,
+  getMyProfile,
+  updateMyProfile
 } = require('../controllers/userController');
 const { protect, authorize } = require('../middleware/authMiddleware');
 const { validate } = require('../middleware/validationMiddleware');
@@ -78,7 +80,7 @@ const updateProfileValidation = [
 const roleValidation = [
   body('role')
     .isIn(['admin', 'secretary', 'treasurer', 'member'])
-    .withMessage('Role must be one of: admin, secretary, treasurer, member')
+    .withMessage('Role must be one of: admin, chairperson, secretary, treasurer, member')
 ];
 
 const statusValidation = [
@@ -137,6 +139,26 @@ router.post('/register',
   memberRegistrationValidation,
   validate,
   registerMember
+);
+
+/**
+ * @route   GET /api/users/profile
+ * @desc    Get current user's profile
+ * @access  Private (All authenticated users)
+ */
+router.get('/profile',
+  getMyProfile
+);
+
+/**
+ * @route   PUT /api/users/profile
+ * @desc    Update current user's profile
+ * @access  Private (All authenticated users)
+ */
+router.put('/profile',
+  updateProfileValidation,
+  validate,
+  updateMyProfile
 );
 
 /**

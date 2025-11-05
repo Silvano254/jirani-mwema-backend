@@ -21,34 +21,64 @@ const createTransaction = async (req, res) => {
 
     const transactionData = {
       ...req.body,
-      createdBy: req.user.id,
+      adminId: req.user.id,
       status: 'pending'
     };
 
-    // If no specific user mentioned, assume it's for the creating user
-    if (!transactionData.fromUserId && !transactionData.toUserId) {
-      transactionData.fromUserId = req.user.id;
+    // Set memberId if not provided (for self-contributions)
+    if (!transactionData.memberId) {
+      transactionData.memberId = req.user.id;
     }
+
+    // Ensure amount is a valid number
+    if (transactionData.amount) {
+      transactionData.amount = Number(transactionData.amount);
+      if (isNaN(transactionData.amount) || transactionData.amount <= 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'Amount must be a valid positive number'
+        });
+      }
+    }
+
+    // Set member and admin names from user objects
+    const member = await User.findById(transactionData.memberId);
+    const admin = await User.findById(transactionData.adminId);
+    
+    if (!member) {
+      return res.status(404).json({
+        success: false,
+        message: 'Member not found'
+      });
+    }
+
+    transactionData.memberName = `${member.firstName} ${member.lastName}`;
+    transactionData.adminName = `${admin.firstName} ${admin.lastName}`;
 
     const transaction = await Transaction.create(transactionData);
     
     await transaction.populate([
-      { path: 'fromUserId', select: 'firstName lastName phoneNumber' },
-      { path: 'toUserId', select: 'firstName lastName phoneNumber' },
-      { path: 'createdBy', select: 'firstName lastName' }
+      { path: 'memberId', select: 'firstName lastName phoneNumber' },
+      { path: 'adminId', select: 'firstName lastName' }
     ]);
 
     logger.info('Transaction created', { 
       transactionId: transaction._id, 
       type: transaction.type,
       amount: transaction.amount,
-      createdBy: req.user.id 
+      adminId: req.user.id 
     });
+
+    // Sanitize transaction data for response
+    const sanitizedTransaction = transaction.toObject();
+    if (sanitizedTransaction.amount) {
+      sanitizedTransaction.amount = Number(sanitizedTransaction.amount);
+    }
 
     res.status(201).json({
       success: true,
       message: 'Transaction created successfully',
-      data: transaction
+      data: sanitizedTransaction
     });
   } catch (error) {
     logger.error('Error creating transaction:', error);
@@ -81,7 +111,10 @@ const getAllTransactions = async (req, res) => {
       sortOrder = 'desc'
     } = req.query;
 
-    const skip = (page - 1) * limit;
+    // Validate and convert pagination parameters
+    const pageNum = Math.max(1, parseInt(page) || 1);
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit) || 20));
+    const skip = (pageNum - 1) * limitNum;
     const query = {};
 
     // Build filter query
@@ -89,24 +122,34 @@ const getAllTransactions = async (req, res) => {
     if (status) query.status = status;
     if (userId) {
       query.$or = [
-        { fromUserId: userId },
-        { toUserId: userId }
+        { memberId: userId },
+        { adminId: userId }
       ];
     }
     if (category) query.category = new RegExp(category, 'i');
 
     // Date range filter
     if (fromDate || toDate) {
-      query.transactionDate = {};
-      if (fromDate) query.transactionDate.$gte = new Date(fromDate);
-      if (toDate) query.transactionDate.$lte = new Date(toDate);
+      query.createdAt = {};
+      if (fromDate) query.createdAt.$gte = new Date(fromDate);
+      if (toDate) query.createdAt.$lte = new Date(toDate);
     }
 
-    // Amount range filter
+    // Amount range filter with validation
     if (minAmount || maxAmount) {
       query.amount = {};
-      if (minAmount) query.amount.$gte = parseFloat(minAmount);
-      if (maxAmount) query.amount.$lte = parseFloat(maxAmount);
+      if (minAmount) {
+        const minVal = parseFloat(minAmount);
+        if (!isNaN(minVal) && minVal >= 0) {
+          query.amount.$gte = minVal;
+        }
+      }
+      if (maxAmount) {
+        const maxVal = parseFloat(maxAmount);
+        if (!isNaN(maxVal) && maxVal >= 0) {
+          query.amount.$lte = maxVal;
+        }
+      }
     }
 
     // Sort options
@@ -114,25 +157,39 @@ const getAllTransactions = async (req, res) => {
     sortOptions[sortBy] = sortOrder === 'desc' ? -1 : 1;
 
     const transactions = await Transaction.find(query)
-      .populate('fromUserId', 'firstName lastName phoneNumber')
-      .populate('toUserId', 'firstName lastName phoneNumber')
-      .populate('createdBy', 'firstName lastName')
+      .populate({
+        path: 'memberId',
+        select: 'firstName lastName phoneNumber',
+        options: { strictPopulate: false }
+      })
+      .populate({
+        path: 'adminId',
+        select: 'firstName lastName',
+        options: { strictPopulate: false }
+      })
       .sort(sortOptions)
       .skip(skip)
-      .limit(parseInt(limit));
+      .limit(limitNum);
 
     const total = await Transaction.countDocuments(query);
+
+    // Ensure all transactions have proper data types
+    const sanitizedTransactions = transactions.map(transaction => {
+      const sanitized = transaction.toObject();
+      if (sanitized.amount) sanitized.amount = Number(sanitized.amount);
+      return sanitized;
+    });
 
     res.status(200).json({
       success: true,
       data: {
-        transactions,
+        transactions: sanitizedTransactions,
         pagination: {
-          currentPage: parseInt(page),
-          totalPages: Math.ceil(total / limit),
+          currentPage: pageNum,
+          totalPages: Math.ceil(total / limitNum),
           totalTransactions: total,
-          hasNext: page < Math.ceil(total / limit),
-          hasPrev: page > 1
+          hasNext: pageNum < Math.ceil(total / limitNum),
+          hasPrev: pageNum > 1
         }
       }
     });
@@ -155,9 +212,8 @@ const getTransactionById = async (req, res) => {
     const { id } = req.params;
 
     const transaction = await Transaction.findById(id)
-      .populate('fromUserId', 'firstName lastName phoneNumber')
-      .populate('toUserId', 'firstName lastName phoneNumber')
-      .populate('createdBy', 'firstName lastName');
+      .populate('memberId', 'firstName lastName phoneNumber')
+      .populate('adminId', 'firstName lastName');
 
     if (!transaction) {
       return res.status(404).json({
@@ -167,10 +223,9 @@ const getTransactionById = async (req, res) => {
     }
 
     // Check if user can access this transaction
-    const canAccess = req.user.role === 'admin' || 
-                     req.user.role === 'treasurer' ||
-                     transaction.fromUserId?._id.toString() === req.user.id ||
-                     transaction.toUserId?._id.toString() === req.user.id;
+    const canAccess = ['admin', 'chairperson', 'treasurer'].includes(req.user.role) ||
+                     transaction.memberId?._id.toString() === req.user.id ||
+                     transaction.adminId?._id.toString() === req.user.id;
 
     if (!canAccess) {
       return res.status(403).json({
@@ -212,7 +267,7 @@ const updateTransaction = async (req, res) => {
     const updates = { ...req.body, updatedAt: new Date() };
 
     // Prevent updating certain fields
-    delete updates.createdBy;
+    delete updates.adminId;
     delete updates.status; // Use separate endpoints for status changes
 
     const transaction = await Transaction.findByIdAndUpdate(
@@ -220,9 +275,8 @@ const updateTransaction = async (req, res) => {
       updates,
       { new: true, runValidators: true }
     ).populate([
-      { path: 'fromUserId', select: 'firstName lastName phoneNumber' },
-      { path: 'toUserId', select: 'firstName lastName phoneNumber' },
-      { path: 'createdBy', select: 'firstName lastName' }
+      { path: 'memberId', select: 'firstName lastName phoneNumber' },
+      { path: 'adminId', select: 'firstName lastName' }
     ]);
 
     if (!transaction) {
@@ -259,12 +313,16 @@ const updateTransaction = async (req, res) => {
 const getUserTransactions = async (req, res) => {
   try {
     const { page = 1, limit = 20, type, status } = req.query;
-    const skip = (page - 1) * limit;
+    
+    // Validate and convert pagination parameters
+    const pageNum = Math.max(1, parseInt(page) || 1);
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit) || 20));
+    const skip = (pageNum - 1) * limitNum;
 
     const query = {
       $or: [
-        { fromUserId: req.user.id },
-        { toUserId: req.user.id }
+        { memberId: req.user.id },
+        { adminId: req.user.id }
       ]
     };
 
@@ -272,21 +330,36 @@ const getUserTransactions = async (req, res) => {
     if (status) query.status = status;
 
     const transactions = await Transaction.find(query)
-      .populate('fromUserId', 'firstName lastName')
-      .populate('toUserId', 'firstName lastName')
+      .populate({
+        path: 'memberId',
+        select: 'firstName lastName',
+        options: { strictPopulate: false }
+      })
+      .populate({
+        path: 'adminId',
+        select: 'firstName lastName',
+        options: { strictPopulate: false }
+      })
       .sort({ createdAt: -1 })
       .skip(skip)
-      .limit(parseInt(limit));
+      .limit(limitNum);
 
     const total = await Transaction.countDocuments(query);
+
+    // Ensure all transactions have proper data types for getUserTransactions
+    const sanitizedTransactions = transactions.map(transaction => {
+      const sanitized = transaction.toObject();
+      if (sanitized.amount) sanitized.amount = Number(sanitized.amount);
+      return sanitized;
+    });
 
     res.status(200).json({
       success: true,
       data: {
-        transactions,
+        transactions: sanitizedTransactions,
         pagination: {
-          currentPage: parseInt(page),
-          totalPages: Math.ceil(total / limit),
+          currentPage: pageNum,
+          totalPages: Math.ceil(total / limitNum),
           totalTransactions: total
         }
       }
@@ -309,14 +382,18 @@ const getTransactionsByType = async (req, res) => {
   try {
     const { type } = req.params;
     const { page = 1, limit = 20 } = req.query;
-    const skip = (page - 1) * limit;
+    
+    // Validate and convert pagination parameters
+    const pageNum = Math.max(1, parseInt(page) || 1);
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit) || 20));
+    const skip = (pageNum - 1) * limitNum;
 
     const transactions = await Transaction.find({ type })
-      .populate('fromUserId', 'firstName lastName')
-      .populate('toUserId', 'firstName lastName')
+      .populate('memberId', 'firstName lastName')
+      .populate('adminId', 'firstName lastName')
       .sort({ createdAt: -1 })
       .skip(skip)
-      .limit(parseInt(limit));
+      .limit(limitNum);
 
     const total = await Transaction.countDocuments({ type });
 
@@ -325,8 +402,8 @@ const getTransactionsByType = async (req, res) => {
       data: {
         transactions,
         pagination: {
-          currentPage: parseInt(page),
-          totalPages: Math.ceil(total / limit),
+          currentPage: pageNum,
+          totalPages: Math.ceil(total / limitNum),
           totalTransactions: total
         }
       }
@@ -350,7 +427,7 @@ const calculateUserBalance = async (req, res) => {
     const { userId } = req.params;
 
     // Check if user can access this balance
-    if (req.user.role !== 'admin' && req.user.role !== 'treasurer' && req.user.id !== userId) {
+    if (!['admin', 'chairperson', 'treasurer'].includes(req.user.role) && req.user.id !== userId) {
       return res.status(403).json({
         success: false,
         message: 'Access denied'
@@ -369,7 +446,7 @@ const calculateUserBalance = async (req, res) => {
     const contributionsResult = await Transaction.aggregate([
       {
         $match: {
-          toUserId: user._id,
+          memberId: user._id,
           type: { $in: ['contribution', 'income', 'dividend'] },
           status: 'completed'
         }
@@ -383,12 +460,12 @@ const calculateUserBalance = async (req, res) => {
       }
     ]);
 
-    // Calculate debits (money going out)
+    // Calculate debits (loans and expenses for the member)
     const debitsResult = await Transaction.aggregate([
       {
         $match: {
-          fromUserId: user._id,
-          type: { $in: ['loan', 'expense', 'fine', 'transfer'] },
+          memberId: user._id,
+          type: { $in: ['loan_request', 'loan_payment', 'expense', 'fine', 'penalty'] },
           status: 'completed'
         }
       },
@@ -407,11 +484,11 @@ const calculateUserBalance = async (req, res) => {
 
     // Get recent transactions
     const recentTransactions = await Transaction.find({
-      $or: [{ fromUserId: userId }, { toUserId: userId }],
+      $or: [{ memberId: userId }, { adminId: userId }],
       status: 'completed'
     })
-      .populate('fromUserId', 'firstName lastName')
-      .populate('toUserId', 'firstName lastName')
+      .populate('memberId', 'firstName lastName')
+      .populate('adminId', 'firstName lastName')
       .sort({ createdAt: -1 })
       .limit(5);
 
@@ -424,11 +501,11 @@ const calculateUserBalance = async (req, res) => {
           phoneNumber: user.phoneNumber
         },
         balance: {
-          totalContributions,
-          totalDebits,
-          currentBalance: balance,
-          contributionCount: contributionsResult[0]?.count || 0,
-          debitCount: debitsResult[0]?.count || 0
+          totalContributions: Number(totalContributions) || 0,
+          totalDebits: Number(totalDebits) || 0,
+          currentBalance: Number(balance) || 0,
+          contributionCount: Number(contributionsResult[0]?.count) || 0,
+          debitCount: Number(debitsResult[0]?.count) || 0
         },
         recentTransactions
       }
@@ -559,8 +636,8 @@ const getDashboardStats = async (req, res) => {
 
     // Recent transactions
     const recentTransactions = await Transaction.find({ status: 'completed' })
-      .populate('fromUserId', 'firstName lastName')
-      .populate('toUserId', 'firstName lastName')
+      .populate('memberId', 'firstName lastName')
+      .populate('adminId', 'firstName lastName')
       .sort({ createdAt: -1 })
       .limit(5);
 
@@ -620,9 +697,9 @@ const approveTransaction = async (req, res) => {
 
     await transaction.save();
     await transaction.populate([
-      { path: 'fromUserId', select: 'firstName lastName' },
-      { path: 'toUserId', select: 'firstName lastName' },
-      { path: 'approvedBy', select: 'firstName lastName' }
+      { path: 'memberId', select: 'firstName lastName' },
+      { path: 'adminId', select: 'firstName lastName' },
+      { path: 'metadata.approvedBy', select: 'firstName lastName' }
     ]);
 
     logger.info('Transaction approved', { 
@@ -742,35 +819,452 @@ const deleteTransaction = async (req, res) => {
 
 // Additional helper functions
 const exportTransactions = async (req, res) => {
-  // Implementation for exporting transactions to CSV/Excel
-  res.status(200).json({
-    success: true,
-    message: 'Export functionality not yet implemented'
-  });
+  try {
+    const { format = 'csv', fromDate, toDate, type, status } = req.query;
+
+    // Build query for filtering
+    const query = {};
+    if (fromDate || toDate) {
+      query.createdAt = {};
+      if (fromDate) query.createdAt.$gte = new Date(fromDate);
+      if (toDate) query.createdAt.$lte = new Date(toDate);
+    }
+    if (type) query.type = type;
+    if (status) query.status = status;
+
+    // Get transactions with populated fields
+    const transactions = await Transaction.find(query)
+      .populate('memberId', 'firstName lastName phoneNumber')
+      .populate('adminId', 'firstName lastName')
+      .sort({ createdAt: -1 })
+      .lean();
+
+    if (transactions.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'No transactions found for export'
+      });
+    }
+
+    // Format data for export
+    const exportData = transactions.map(transaction => ({
+      Date: new Date(transaction.createdAt).toISOString().split('T')[0],
+      Time: new Date(transaction.createdAt).toLocaleTimeString('en-KE'),
+      'Transaction ID': transaction._id.toString(),
+      Type: transaction.type,
+      Amount: `KSh ${transaction.amount.toLocaleString()}`,
+      Description: transaction.description,
+      Status: transaction.status,
+      'Member Name': transaction.memberId ? 
+        `${transaction.memberId.firstName} ${transaction.memberId.lastName}` : 
+        transaction.memberName,
+      'Member Phone': transaction.memberId?.phoneNumber || 'N/A',
+      'Processed By': transaction.adminId ? 
+        `${transaction.adminId.firstName} ${transaction.adminId.lastName}` : 
+        transaction.adminName,
+      Category: transaction.category || 'General',
+      Reference: transaction.metadata?.reference || '',
+      'Loan Duration': transaction.metadata?.loanDuration ? 
+        `${transaction.metadata.loanDuration} months` : '',
+      'Due Date': transaction.metadata?.dueDate ? 
+        new Date(transaction.metadata.dueDate).toISOString().split('T')[0] : ''
+    }));
+
+    // Generate filename with timestamp
+    const timestamp = new Date().toISOString().split('T')[0];
+    const filename = `transactions_export_${timestamp}.${format}`;
+
+    if (format === 'csv') {
+      // Generate CSV content
+      const headers = Object.keys(exportData[0]).join(',');
+      const csvContent = [
+        headers,
+        ...exportData.map(row => 
+          Object.values(row).map(value => 
+            typeof value === 'string' && value.includes(',') ? 
+            `"${value}"` : value
+          ).join(',')
+        )
+      ].join('\n');
+
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      return res.send(csvContent);
+    }
+
+    // For other formats, return JSON with download info
+    logger.info('Transactions exported', { 
+      count: transactions.length, 
+      format, 
+      exportedBy: req.user.id 
+    });
+
+    res.status(200).json({
+      success: true,
+      message: `${transactions.length} transactions exported successfully`,
+      data: {
+        format,
+        filename,
+        count: transactions.length,
+        exportData: format === 'json' ? exportData : null
+      }
+    });
+  } catch (error) {
+    logger.error('Error exporting transactions:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while exporting transactions'
+    });
+  }
 };
 
 const reconcileTransactions = async (req, res) => {
-  // Implementation for reconciling transactions
-  res.status(200).json({
-    success: true,
-    message: 'Reconciliation functionality not yet implemented'
-  });
+  try {
+    const { reconciliationDate, adjustments = [], notes } = req.body;
+
+    const reconcileDate = new Date(reconciliationDate);
+    
+    // Get all pending transactions up to reconciliation date
+    const pendingTransactions = await Transaction.find({
+      status: 'pending',
+      createdAt: { $lte: reconcileDate }
+    }).populate('memberId', 'firstName lastName');
+
+    let reconciled = 0;
+    let totalAdjustment = 0;
+    const reconciliationResults = [];
+
+    // Process each pending transaction
+    for (const transaction of pendingTransactions) {
+      // Auto-approve contributions older than reconciliation date
+      if (transaction.type === 'contribution') {
+        transaction.status = 'completed';
+        transaction.metadata = transaction.metadata || {};
+        transaction.metadata.reconciledAt = new Date();
+        transaction.metadata.reconciledBy = req.user.id;
+        await transaction.save();
+        
+        reconciled++;
+        reconciliationResults.push({
+          transactionId: transaction._id,
+          action: 'auto-approved',
+          type: transaction.type,
+          amount: transaction.amount,
+          memberName: transaction.memberId ? 
+            `${transaction.memberId.firstName} ${transaction.memberId.lastName}` : 
+            transaction.memberName
+        });
+      }
+    }
+
+    // Process manual adjustments
+    for (const adjustment of adjustments) {
+      if (adjustment.transactionId && adjustment.newStatus) {
+        const transaction = await Transaction.findById(adjustment.transactionId);
+        if (transaction) {
+          const oldStatus = transaction.status;
+          transaction.status = adjustment.newStatus;
+          transaction.metadata = transaction.metadata || {};
+          transaction.metadata.reconciledAt = new Date();
+          transaction.metadata.reconciledBy = req.user.id;
+          transaction.metadata.adjustmentReason = adjustment.reason;
+          await transaction.save();
+
+          reconciliationResults.push({
+            transactionId: transaction._id,
+            action: 'manually-adjusted',
+            oldStatus,
+            newStatus: adjustment.newStatus,
+            reason: adjustment.reason,
+            amount: transaction.amount
+          });
+
+          if (adjustment.amountAdjustment) {
+            totalAdjustment += adjustment.amountAdjustment;
+          }
+        }
+      }
+    }
+
+    // Create reconciliation audit log
+    const reconciliationLog = {
+      performedBy: req.user.id,
+      reconciliationDate: reconcileDate,
+      transactionsReconciled: reconciled,
+      manualAdjustments: adjustments.length,
+      totalAdjustment,
+      notes,
+      results: reconciliationResults,
+      timestamp: new Date()
+    };
+
+    logger.info('Transaction reconciliation completed', reconciliationLog);
+
+    res.status(200).json({
+      success: true,
+      message: `Reconciliation completed: ${reconciled} transactions processed`,
+      data: {
+        reconciliationDate: reconcileDate,
+        transactionsReconciled: reconciled,
+        manualAdjustments: adjustments.length,
+        totalAdjustment,
+        results: reconciliationResults,
+        summary: {
+          autoApproved: reconciliationResults.filter(r => r.action === 'auto-approved').length,
+          manuallyAdjusted: reconciliationResults.filter(r => r.action === 'manually-adjusted').length
+        }
+      }
+    });
+  } catch (error) {
+    logger.error('Error reconciling transactions:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while reconciling transactions'
+    });
+  }
 };
 
 const bulkImportTransactions = async (req, res) => {
-  // Implementation for bulk importing transactions
-  res.status(200).json({
-    success: true,
-    message: 'Bulk import functionality not yet implemented'
-  });
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Validation errors',
+        errors: errors.array()
+      });
+    }
+
+    const { transactions } = req.body;
+    const results = {
+      total: transactions.length,
+      successful: 0,
+      failed: 0,
+      errors: []
+    };
+
+    const importedTransactions = [];
+
+    for (let i = 0; i < transactions.length; i++) {
+      try {
+        const transactionData = transactions[i];
+        
+        // Find member by phone number if provided
+        let memberId = transactionData.memberId;
+        if (!memberId && transactionData.memberPhone) {
+          const member = await User.findOne({ 
+            phoneNumber: transactionData.memberPhone,
+            isActive: true 
+          });
+          if (member) {
+            memberId = member._id;
+          } else {
+            results.errors.push({
+              row: i + 1,
+              error: `Member with phone ${transactionData.memberPhone} not found`
+            });
+            results.failed++;
+            continue;
+          }
+        }
+
+        // Create transaction
+        const transaction = new Transaction({
+          memberId: memberId || req.user.id,
+          memberName: transactionData.memberName || 'Bulk Import',
+          adminId: req.user.id,
+          adminName: `${req.user.firstName} ${req.user.lastName}`,
+          type: transactionData.type,
+          amount: Number(transactionData.amount),
+          description: transactionData.description,
+          category: transactionData.category || 'General',
+          status: transactionData.status || 'completed',
+          metadata: {
+            bulkImported: true,
+            importedAt: new Date(),
+            importedBy: req.user.id,
+            reference: transactionData.reference || '',
+            originalRow: i + 1
+          }
+        });
+
+        // Override date if provided
+        if (transactionData.date) {
+          transaction.createdAt = new Date(transactionData.date);
+        }
+
+        await transaction.save();
+        importedTransactions.push(transaction);
+        results.successful++;
+
+      } catch (error) {
+        results.errors.push({
+          row: i + 1,
+          error: error.message
+        });
+        results.failed++;
+      }
+    }
+
+    logger.info('Bulk import completed', {
+      total: results.total,
+      successful: results.successful,
+      failed: results.failed,
+      importedBy: req.user.id
+    });
+
+    res.status(201).json({
+      success: true,
+      message: `Bulk import completed: ${results.successful}/${results.total} transactions imported`,
+      data: {
+        summary: results,
+        importedTransactions: importedTransactions.map(t => ({
+          id: t._id,
+          type: t.type,
+          amount: t.amount,
+          memberName: t.memberName,
+          status: t.status
+        }))
+      }
+    });
+  } catch (error) {
+    logger.error('Error bulk importing transactions:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while importing transactions'
+    });
+  }
 };
 
 const getMonthlyReport = async (req, res) => {
-  // Implementation for monthly reports
-  res.status(200).json({
-    success: true,
-    message: 'Monthly report functionality not yet implemented'
-  });
+  try {
+    const { year, month } = req.query;
+    
+    // Create date range for the specified month
+    const startDate = new Date(year, month - 1, 1);
+    const endDate = new Date(year, month, 0, 23, 59, 59);
+
+    // Get transactions for the month
+    const transactions = await Transaction.find({
+      createdAt: { $gte: startDate, $lte: endDate }
+    }).populate('memberId', 'firstName lastName').lean();
+
+    // Calculate monthly summaries
+    const summaries = {
+      contributions: { count: 0, amount: 0, transactions: [] },
+      loans: { count: 0, amount: 0, transactions: [] },
+      expenses: { count: 0, amount: 0, transactions: [] },
+      fines: { count: 0, amount: 0, transactions: [] },
+      other: { count: 0, amount: 0, transactions: [] }
+    };
+
+    // Process each transaction
+    transactions.forEach(transaction => {
+      const category = transaction.type === 'contribution' ? 'contributions' :
+                      transaction.type.includes('loan') ? 'loans' :
+                      ['fine', 'penalty'].includes(transaction.type) ? 'fines' :
+                      transaction.type === 'expense' ? 'expenses' : 'other';
+
+      summaries[category].count++;
+      summaries[category].amount += transaction.amount;
+      summaries[category].transactions.push({
+        id: transaction._id,
+        date: transaction.createdAt,
+        amount: transaction.amount,
+        description: transaction.description,
+        memberName: transaction.memberId ? 
+          `${transaction.memberId.firstName} ${transaction.memberId.lastName}` : 
+          transaction.memberName,
+        status: transaction.status
+      });
+    });
+
+    // Calculate totals
+    const totalIncome = summaries.contributions.amount + 
+                       summaries.fines.amount + 
+                       summaries.other.amount;
+    const totalOutgoing = summaries.loans.amount + summaries.expenses.amount;
+    const netAmount = totalIncome - totalOutgoing;
+
+    // Get member participation stats
+    const memberStats = await Transaction.aggregate([
+      { $match: { createdAt: { $gte: startDate, $lte: endDate } } },
+      { 
+        $group: {
+          _id: '$memberId',
+          transactionCount: { $sum: 1 },
+          totalAmount: { $sum: '$amount' },
+          types: { $addToSet: '$type' }
+        }
+      },
+      { $sort: { totalAmount: -1 } },
+      { $limit: 10 }
+    ]);
+
+    // Populate member names
+    await Transaction.populate(memberStats, {
+      path: '_id',
+      select: 'firstName lastName'
+    });
+
+    const monthName = new Date(year, month - 1).toLocaleString('default', { 
+      month: 'long', 
+      year: 'numeric' 
+    });
+
+    logger.info('Monthly report generated', {
+      year,
+      month,
+      totalTransactions: transactions.length,
+      netAmount,
+      generatedBy: req.user.id
+    });
+
+    res.status(200).json({
+      success: true,
+      data: {
+        period: {
+          month: monthName,
+          year: parseInt(year),
+          monthNumber: parseInt(month),
+          startDate,
+          endDate
+        },
+        summary: {
+          totalTransactions: transactions.length,
+          totalIncome,
+          totalOutgoing,
+          netAmount,
+          categories: Object.keys(summaries).map(key => ({
+            category: key,
+            count: summaries[key].count,
+            amount: summaries[key].amount,
+            percentage: totalIncome > 0 ? 
+              ((summaries[key].amount / totalIncome) * 100).toFixed(1) : '0.0'
+          }))
+        },
+        details: summaries,
+        topMembers: memberStats.map(stat => ({
+          memberName: stat._id ? 
+            `${stat._id.firstName} ${stat._id.lastName}` : 'Unknown',
+          transactionCount: stat.transactionCount,
+          totalAmount: stat.totalAmount,
+          types: stat.types
+        })),
+        trends: {
+          averageTransactionValue: transactions.length > 0 ? 
+            (transactions.reduce((sum, t) => sum + t.amount, 0) / transactions.length).toFixed(2) : 0,
+          activeMembers: new Set(transactions.map(t => t.memberId?.toString())).size
+        }
+      }
+    });
+  } catch (error) {
+    logger.error('Error generating monthly report:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while generating monthly report'
+    });
+  }
 };
 
 module.exports = {

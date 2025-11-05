@@ -79,7 +79,7 @@ const getUserById = async (req, res) => {
     const { id } = req.params;
 
     // Check if user can access this profile
-    if (req.user.role !== 'admin' && req.user.role !== 'secretary' && req.user.id !== id) {
+    if (!['admin', 'chairperson', 'secretary'].includes(req.user.role) && req.user.id !== id) {
       return res.status(403).json({
         success: false,
         message: 'Access denied'
@@ -129,7 +129,7 @@ const updateUserProfile = async (req, res) => {
     const updates = req.body;
 
     // Check if user can update this profile
-    if (req.user.role !== 'admin' && req.user.id !== id) {
+    if (!['admin', 'chairperson'].includes(req.user.role) && req.user.id !== id) {
       return res.status(403).json({
         success: false,
         message: 'Access denied'
@@ -277,7 +277,7 @@ const updateUserRole = async (req, res) => {
     const { role } = req.body;
 
     // Prevent admin from demoting themselves
-    if (req.user.id === id && req.user.role === 'admin' && role !== 'admin') {
+    if (req.user.id === id && ['admin', 'chairperson'].includes(req.user.role) && !['admin', 'chairperson'].includes(role)) {
       return res.status(400).json({
         success: false,
         message: 'Admin cannot change their own role'
@@ -635,6 +635,83 @@ const registerMember = async (req, res) => {
   }
 };
 
+/**
+ * @desc    Get current user's profile
+ * @route   GET /api/users/profile
+ * @access  Private (All authenticated users)
+ */
+const getMyProfile = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id)
+      .select('-otp -otpExpires -failedLoginAttempts -lockedUntil');
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: user
+    });
+  } catch (error) {
+    logger.error('Error fetching user profile:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while fetching profile'
+    });
+  }
+};
+
+/**
+ * @desc    Update current user's profile
+ * @route   PUT /api/users/profile
+ * @access  Private (All authenticated users)
+ */
+const updateMyProfile = async (req, res) => {
+  try {
+    const updates = req.body;
+
+    // Remove sensitive fields from updates that users shouldn't change
+    delete updates.phoneNumber;
+    delete updates.role;
+    delete updates.isActive;
+    delete updates.otp;
+    delete updates.otpExpires;
+    delete updates.failedLoginAttempts;
+    delete updates.lockedUntil;
+
+    const user = await User.findByIdAndUpdate(
+      req.user.id,
+      { ...updates, updatedAt: new Date() },
+      { new: true, runValidators: true }
+    ).select('-otp -otpExpires -failedLoginAttempts -lockedUntil');
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    logger.info('User profile updated', { userId: req.user.id });
+
+    res.status(200).json({
+      success: true,
+      message: 'Profile updated successfully',
+      data: user
+    });
+  } catch (error) {
+    logger.error('Error updating user profile:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while updating profile'
+    });
+  }
+};
+
 module.exports = {
   getAllUsers,
   getUserById,
@@ -646,5 +723,7 @@ module.exports = {
   toggleUserStatus,
   getUserStats,
   bulkUpdateUsers,
-  registerMember
+  registerMember,
+  getMyProfile,
+  updateMyProfile
 };

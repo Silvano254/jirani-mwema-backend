@@ -190,6 +190,67 @@ router.get('/:id/attendance',
 );
 
 /**
+ * @route   POST /api/meetings/:id/reminders
+ * @desc    Send meeting reminders
+ * @access  Private (Admin/Secretary)
+ */
+router.post('/:id/reminders',
+  authorize('admin', 'secretary'),
+  meetingIdValidation,
+  [
+    body('customMessage')
+      .optional()
+      .trim()
+      .isLength({ max: 160 })
+      .withMessage('Custom message must be 160 characters or less')
+  ],
+  validate,
+  sendMeetingReminders
+);
+
+/**
+ * @route   GET /api/meetings/:id/minutes
+ * @desc    Get meeting minutes
+ * @access  Private (All authenticated users)
+ */
+router.get('/:id/minutes',
+  meetingIdValidation,
+  validate,
+  getMeetingMinutes
+);
+
+/**
+ * @route   PUT /api/meetings/:id/minutes
+ * @desc    Update meeting minutes
+ * @access  Private (Admin/Secretary)
+ */
+router.put('/:id/minutes',
+  authorize('admin', 'secretary'),
+  meetingIdValidation,
+  [
+    body('content')
+      .optional()
+      .trim()
+      .isLength({ max: 2000 })
+      .withMessage('Meeting minutes content must be 2000 characters or less'),
+    body('decisions')
+      .optional()
+      .isArray()
+      .withMessage('Decisions must be an array'),
+    body('actionItems')
+      .optional()
+      .isArray()
+      .withMessage('Action items must be an array'),
+    body('attendees')
+      .optional()
+      .isArray()
+      .withMessage('Attendees must be an array')
+  ],
+  validate,
+  updateMeetingMinutes
+);
+
+/**
  * @route   DELETE /api/meetings/:id
  * @desc    Delete meeting (soft delete)
  * @access  Private (Admin only)
