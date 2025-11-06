@@ -33,10 +33,15 @@ class SMSService {
         return false;
       }
 
-      // Decide sender ID usage
-      const configuredSender = process.env.AT_SENDER_ID && process.env.AT_SENDER_ID.trim() !== ''
+      // Decide sender ID usage: only if explicitly enabled/approved
+      const senderConfigured = process.env.AT_SENDER_ID && process.env.AT_SENDER_ID.trim() !== ''
         ? process.env.AT_SENDER_ID.trim()
         : null;
+      const useSenderId = (
+        (process.env.USE_AT_SENDER_ID === 'true') ||
+        (process.env.AT_SENDER_ID_APPROVED === 'true')
+      ) && !!senderConfigured;
+      const configuredSender = useSenderId ? senderConfigured : null;
 
       // Build initial send options
       let options = {
@@ -48,7 +53,7 @@ class SMSService {
         ...(configuredSender ? { from: configuredSender } : {})
       };
 
-      logger.info(`Sending SMS to ${formattedNumber}... (username=${process.env.AT_USERNAME || 'N/A'}, from=${configuredSender || 'NONE'})`);
+  logger.info(`Sending SMS to ${formattedNumber}... (username=${process.env.AT_USERNAME || 'N/A'}, from=${configuredSender || 'NONE'}, useSenderId=${useSenderId})`);
       let response = await this.sms.send(options);
 
       // Log raw response for diagnostics when unexpected
