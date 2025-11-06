@@ -380,7 +380,7 @@ const deleteUser = async (req, res) => {
 // Create new user (admin only)
 const createUser = async (req, res) => {
   try {
-    const { firstName, lastName, phoneNumber, nationalId, role } = req.body;
+  const { firstName, lastName, phoneNumber, nationalId, role } = req.body;
 
     // Validate required fields
     if (!firstName || !lastName || !phoneNumber || !nationalId || !role) {
@@ -391,7 +391,7 @@ const createUser = async (req, res) => {
     }
 
     // Validate role
-    const validRoles = ['member', 'secretary', 'treasurer', 'chairperson'];
+    const validRoles = ['member', 'secretary', 'treasurer', 'chairperson', 'admin'];
     if (!validRoles.includes(role)) {
       return res.status(400).json({
         success: false,
@@ -399,8 +399,12 @@ const createUser = async (req, res) => {
       });
     }
 
-    // Check if phone number already exists
-    const existingPhone = await User.findOne({ phoneNumber });
+    // Normalize phone number to standard format before checks
+    const smsService = require('../services/smsService');
+    const normalizedPhone = smsService.formatPhoneNumber(phoneNumber) || phoneNumber;
+
+    // Check if phone number already exists (compare normalized)
+    const existingPhone = await User.findOne({ phoneNumber: normalizedPhone });
     if (existingPhone) {
       return res.status(400).json({
         success: false,
@@ -421,14 +425,32 @@ const createUser = async (req, res) => {
     const newUser = new User({
       firstName,
       lastName,
-      phoneNumber,
+      phoneNumber: normalizedPhone,
       nationalId,
       role,
       isActive: true,
       fingerprintEnabled: false
     });
 
-    await newUser.save();
+    // Save with validation and catch duplicate errors
+    try {
+      await newUser.save();
+    } catch (saveErr) {
+      // Handle duplicate key or validation errors gracefully
+      if (saveErr && saveErr.code === 11000) {
+        return res.status(400).json({
+          success: false,
+          message: 'Phone number already registered'
+        });
+      }
+      if (saveErr && saveErr.name === 'ValidationError') {
+        return res.status(400).json({
+          success: false,
+          message: Object.values(saveErr.errors).map(e => e.message).join(', ')
+        });
+      }
+      throw saveErr;
+    }
 
     logger.info(`New user created by admin: ${newUser.firstName} ${newUser.lastName} - ${newUser.phoneNumber}`);
 
@@ -449,7 +471,6 @@ const createUser = async (req, res) => {
 
     // Send registration SMS
     try {
-      const smsService = require('../services/smsService');
       const welcomeMessage = `Welcome to Jirani Mwema, ${newUser.firstName}! Your account has been created successfully. You can now log in using your phone number ${newUser.phoneNumber}.`;
       
       const smsSent = await smsService.sendSMS(newUser.phoneNumber, welcomeMessage);
